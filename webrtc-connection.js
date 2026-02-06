@@ -293,16 +293,19 @@ function retrieveSdp(sessionId, type) {
 function generateShareableUrl(sessionId, baseUrl = null) {
     // Get the full base URL including path
     if (!baseUrl) {
-        baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+        // Get the directory path (everything except the filename)
+        const pathname = window.location.pathname;
+        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        baseUrl = window.location.origin + directory;
     }
     
     // Use the phone page for offer, iPad page for answer
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     
-    // Ensure baseUrl ends with / and targetPage doesn't start with /
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    return `${cleanBase}/${targetPage}?session=${sessionId}`;
+    // Ensure baseUrl ends with /
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return `${cleanBase}${targetPage}?session=${sessionId}`;
 }
 
 /**
@@ -311,12 +314,15 @@ function generateShareableUrl(sessionId, baseUrl = null) {
 function generateAnswerUrl(sessionId, baseUrl = null) {
     // Get the full base URL including path
     if (!baseUrl) {
-        baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+        // Get the directory path (everything except the filename)
+        const pathname = window.location.pathname;
+        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        baseUrl = window.location.origin + directory;
     }
     
     // Ensure baseUrl ends with /
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-    return `${cleanBase}/phone.html?session=${sessionId}&type=answer`;
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return `${cleanBase}phone.html?session=${sessionId}&type=answer`;
 }
 
 /**
