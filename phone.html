@@ -558,9 +558,13 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Generate answer URL with encoded answer (direct approach)
-                const answerUrl = generateAnswerUrl(answer);
-                displayAnswerUrl(answerUrl, null, answer);
+                // Get session ID from URL if available
+                const sessionInfo = extractSessionFromUrl();
+                const sessionId = sessionInfo ? sessionInfo.sessionId : null;
+                
+                // Generate answer URL with encoded answer
+                const urlData = generateAnswerUrl(answer, sessionId);
+                displayAnswerUrl(urlData.url, urlData.sessionId, answer);
                 
                 // Connection completes when other device loads the answer URL
                 
