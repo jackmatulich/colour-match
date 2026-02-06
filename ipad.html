@@ -165,15 +165,29 @@
         </div>
     </div>
 
-    <div id="controls">
-        <div class="status" id="status">Not connected</div>
+        <div id="controls">
+            <div class="status" id="status">Not connected</div>
 
-        <div id="connectionSection">
-            <div class="connection-section">
-                <input type="text" id="offerInput" placeholder="Paste connection URL or scan QR code">
-                <button id="connectBtn">Connect</button>
+            <div id="modeSelection" class="connection-section">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">Connection Mode:</label>
+                <div style="display: flex; gap: 10px;">
+                    <button id="startSessionBtn" class="secondary" style="flex: 1;">Start Session</button>
+                    <button id="joinSessionBtn" class="secondary" style="flex: 1;">Join Session</button>
+                </div>
             </div>
-        </div>
+
+            <div id="startSessionSection" style="display: none;">
+                <div class="connection-section">
+                    <button id="createOfferBtn">Create Connection</button>
+                </div>
+            </div>
+
+            <div id="connectionSection" style="display: none;">
+                <div class="connection-section">
+                    <input type="text" id="offerInput" placeholder="Paste connection URL or scan QR code">
+                    <button id="connectBtn">Connect</button>
+                </div>
+            </div>
 
         <div id="answerSection">
             <div>Share this answer URL with the phone:</div>
@@ -203,6 +217,11 @@
         const status = document.getElementById('status');
         const offerInput = document.getElementById('offerInput');
         const connectBtn = document.getElementById('connectBtn');
+        const modeSelection = document.getElementById('modeSelection');
+        const startSessionBtn = document.getElementById('startSessionBtn');
+        const joinSessionBtn = document.getElementById('joinSessionBtn');
+        const startSessionSection = document.getElementById('startSessionSection');
+        const createOfferBtn = document.getElementById('createOfferBtn');
         const connectionSection = document.getElementById('connectionSection');
         const connectedSection = document.getElementById('connectedSection');
         const answerSection = document.getElementById('answerSection');
@@ -210,8 +229,90 @@
         const copyAnswerBtn = document.getElementById('copyAnswerBtn');
         const matchBtn = document.getElementById('matchBtn');
         const noMatchBtn = document.getElementById('noMatchBtn');
+        let isInitiator = false;
 
-        // Connect to phone
+        // Mode selection
+        startSessionBtn.addEventListener('click', () => {
+            modeSelection.style.display = 'none';
+            startSessionSection.style.display = 'block';
+            isInitiator = true;
+        });
+
+        joinSessionBtn.addEventListener('click', () => {
+            modeSelection.style.display = 'none';
+            connectionSection.style.display = 'block';
+            isInitiator = false;
+        });
+
+        // Create offer (start session)
+        createOfferBtn.addEventListener('click', async () => {
+            try {
+                createOfferBtn.disabled = true;
+                status.textContent = 'Creating connection...';
+                status.className = 'status';
+
+                connection = new WebRTCConnection();
+
+                connection.onConnectionStateChange((state) => {
+                    console.log('Connection state:', state);
+                    if (state === 'connected') {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        startSessionSection.style.display = 'none';
+                        answerSection.classList.remove('active');
+                        connectedSection.classList.add('active');
+                    } else if (state === 'disconnected' || state === 'failed') {
+                        status.textContent = 'Disconnected';
+                        status.className = 'status disconnected';
+                    }
+                });
+
+                connection.onDataChannelStateChange((isOpen) => {
+                    if (isOpen) {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        matchBtn.disabled = false;
+                        noMatchBtn.disabled = false;
+                    }
+                });
+
+                connection.onMessage((data) => {
+                    handleMessage(data);
+                });
+
+                const offer = await connection.initAsOfferer();
+                
+                // Generate QR code with offer
+                const shareableUrl = generateShareableUrl(offer);
+                displayAnswerUrl(shareableUrl); // Reuse this function to show the offer URL
+                answerSection.classList.add('active');
+                
+                // Check if answer is in URL
+                checkForAnswer();
+                
+            } catch (err) {
+                console.error('Error creating connection:', err);
+                alert('Failed to create connection: ' + err.message);
+                createOfferBtn.disabled = false;
+            }
+        });
+
+        // Check for answer in URL parameters
+        function checkForAnswer() {
+            const sdpData = extractSdpFromUrl();
+            if (sdpData && sdpData.type === 'answer' && connection) {
+                connection.setRemoteDescription(sdpData.sdp).then(() => {
+                    status.textContent = 'Connection established';
+                    status.className = 'status connected';
+                    answerSection.classList.remove('active');
+                    connectedSection.classList.add('active');
+                }).catch(err => {
+                    console.error('Error setting remote description:', err);
+                });
+            }
+        }
+
+        // Connect to other device (join session)
         connectBtn.addEventListener('click', async () => {
             try {
                 const url = offerInput.value.trim();
@@ -285,14 +386,13 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Generate answer URL for phone to use
+                // Generate answer URL for other device to use
                 const answerUrl = generateAnswerUrl(answer);
                 
                 // Display answer URL and QR code
                 displayAnswerUrl(answerUrl);
                 
-                // Also try to complete connection (though phone needs to set this)
-                // The connection will complete once phone sets the answer
+                // Connection will complete once other device sets the answer
 
             } catch (err) {
                 console.error('Error connecting:', err);
@@ -306,6 +406,16 @@
             if (data.type === 'color') {
                 currentColor = data;
                 displayColor(data);
+            } else if (data.type === 'answer') {
+                // Remote sent answer (when this device started session)
+                if (connection) {
+                    connection.setRemoteDescription(data.answer).then(() => {
+                        status.textContent = 'Connection established';
+                        status.className = 'status connected';
+                        answerSection.classList.remove('active');
+                        connectedSection.classList.add('active');
+                    });
+                }
             }
         }
 

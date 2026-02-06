@@ -160,12 +160,29 @@
         <canvas id="canvas"></canvas>
     </div>
 
-    <div id="controls">
-        <div class="status" id="status">Not connected</div>
-        
-        <div class="control-group">
-            <button id="connectBtn">Start Connection</button>
-        </div>
+        <div id="controls">
+            <div class="status" id="status">Not connected</div>
+            
+            <div class="control-group" id="modeSelection">
+                <label style="display: block; margin-bottom: 10px; font-weight: bold;">Connection Mode:</label>
+                <div class="control-row">
+                    <button id="startSessionBtn" class="secondary">Start Session</button>
+                    <button id="joinSessionBtn" class="secondary">Join Session</button>
+                </div>
+            </div>
+
+            <div id="startSessionSection" style="display: none;">
+                <div class="control-group">
+                    <button id="createOfferBtn">Create Connection</button>
+                </div>
+            </div>
+
+            <div id="joinSessionSection" style="display: none;">
+                <div class="control-group">
+                    <input type="text" id="joinOfferInput" placeholder="Paste connection URL or scan QR code" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                    <button id="joinOfferBtn">Connect</button>
+                </div>
+            </div>
 
         <div id="qrContainer">
             <div>Scan this QR code with iPad:</div>
@@ -240,6 +257,15 @@
         const copyUrlBtn = document.getElementById('copyUrlBtn');
         const answerInput = document.getElementById('answerInput');
         const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+        const modeSelection = document.getElementById('modeSelection');
+        const startSessionBtn = document.getElementById('startSessionBtn');
+        const joinSessionBtn = document.getElementById('joinSessionBtn');
+        const startSessionSection = document.getElementById('startSessionSection');
+        const joinSessionSection = document.getElementById('joinSessionSection');
+        const createOfferBtn = document.getElementById('createOfferBtn');
+        const joinOfferInput = document.getElementById('joinOfferInput');
+        const joinOfferBtn = document.getElementById('joinOfferBtn');
+        let isInitiator = false;
 
         // Initialize camera
         async function initCamera() {
@@ -308,8 +334,172 @@
                 `Hex: ${hex}`;
         }
 
-        // Start connection
-        connectBtn.addEventListener('click', async () => {
+        // Mode selection
+        startSessionBtn.addEventListener('click', () => {
+            modeSelection.style.display = 'none';
+            startSessionSection.style.display = 'block';
+            isInitiator = true;
+        });
+
+        joinSessionBtn.addEventListener('click', () => {
+            modeSelection.style.display = 'none';
+            joinSessionSection.style.display = 'block';
+            isInitiator = false;
+        });
+
+        // Create offer (start session)
+        createOfferBtn.addEventListener('click', async () => {
+            try {
+                createOfferBtn.disabled = true;
+                status.textContent = 'Creating connection...';
+                status.className = 'status';
+
+                connection = new WebRTCConnection();
+
+                connection.onConnectionStateChange((state) => {
+                    console.log('Connection state:', state);
+                    if (state === 'connected') {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    } else if (state === 'disconnected' || state === 'failed') {
+                        status.textContent = 'Disconnected';
+                        status.className = 'status disconnected';
+                    }
+                });
+
+                connection.onDataChannelStateChange((isOpen) => {
+                    if (isOpen) {
+                        status.textContent = 'Data channel open';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    }
+                });
+
+                connection.onMessage((data) => {
+                    handleMessage(data);
+                });
+
+                const offer = await connection.initAsOfferer();
+                
+                // Generate QR code with offer
+                const shareableUrl = generateShareableUrl(offer);
+                displayQRCode(shareableUrl);
+
+                // Check if answer is in URL
+                checkForAnswer();
+                
+            } catch (err) {
+                console.error('Error creating connection:', err);
+                alert('Failed to create connection: ' + err.message);
+                createOfferBtn.disabled = false;
+            }
+        });
+
+        // Join session (accept offer)
+        joinOfferBtn.addEventListener('click', async () => {
+            try {
+                const url = joinOfferInput.value.trim();
+                if (!url) {
+                    alert('Please enter a connection URL');
+                    return;
+                }
+
+                joinOfferBtn.disabled = true;
+                status.textContent = 'Connecting...';
+                status.className = 'status';
+
+                // Extract offer from URL
+                let sdpData = extractSdpFromUrl();
+                let offer = null;
+                
+                if (sdpData && sdpData.type === 'offer') {
+                    offer = sdpData.sdp;
+                } else {
+                    try {
+                        const urlObj = new URL(url);
+                        const offerParam = urlObj.searchParams.get('offer');
+                        if (offerParam) {
+                            offer = decodeSdp(offerParam);
+                        } else {
+                            offer = decodeSdp(url);
+                        }
+                    } catch (e) {
+                        alert('Invalid connection URL. Please check and try again.');
+                        joinOfferBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                if (!offer) {
+                    alert('Could not extract offer from URL');
+                    joinOfferBtn.disabled = false;
+                    return;
+                }
+
+                connection = new WebRTCConnection();
+
+                connection.onConnectionStateChange((state) => {
+                    console.log('Connection state:', state);
+                    if (state === 'connected') {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    } else if (state === 'disconnected' || state === 'failed') {
+                        status.textContent = 'Disconnected';
+                        status.className = 'status disconnected';
+                    }
+                });
+
+                connection.onDataChannelStateChange((isOpen) => {
+                    if (isOpen) {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    }
+                });
+
+                connection.onMessage((data) => {
+                    handleMessage(data);
+                });
+
+                const answer = await connection.initAsAnswerer(offer);
+                
+                // Generate answer URL
+                const answerUrl = generateAnswerUrl(answer);
+                displayAnswerUrl(answerUrl);
+                
+            } catch (err) {
+                console.error('Error connecting:', err);
+                alert('Failed to connect: ' + err.message);
+                joinOfferBtn.disabled = false;
+            }
+        });
+
+        // Display answer URL (when joining)
+        function displayAnswerUrl(url) {
+            if (!answerInput) return;
+            answerInput.value = url;
+            qrContainer.style.display = 'block';
+            
+            // Show QR code for answer
+            if (qrCode) {
+                qrCode.clear();
+            }
+            qrCode = new QRCode(document.getElementById('qrcode'), {
+                text: url,
+                width: 200,
+                height: 200
+            });
+
+            copyUrlBtn.onclick = () => {
+                navigator.clipboard.writeText(url).then(() => {
+                    alert('Answer URL copied to clipboard!');
+                });
+            };
+        }
+
+        // Note: Legacy connectBtn removed - using new dual-mode system
             try {
                 connectBtn.disabled = true;
                 status.textContent = 'Creating connection...';
@@ -352,7 +542,7 @@
             } catch (err) {
                 console.error('Error creating connection:', err);
                 alert('Failed to create connection: ' + err.message);
-                connectBtn.disabled = false;
+                createOfferBtn.disabled = false;
             }
         });
 
@@ -508,7 +698,23 @@
             sendColorToIpad(candidate);
         }
 
-        // Send color to iPad
+        // Display received color (when this device is receiving)
+        function displayReceivedColor(colorData) {
+            const rgb = colorData.rgb;
+            const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+            const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+            
+            // Update test color display
+            testColorSwatch.style.backgroundColor = hex;
+            if (colorData.mode === 'rgb') {
+                testColorInfo.textContent = `RGB: ${rgb.r}, ${rgb.g}, ${rgb.b} | Hex: ${hex}`;
+            } else {
+                testColorInfo.textContent = `CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%`;
+            }
+            currentTestColor.style.display = 'flex';
+        }
+
+        // Send color to other device
         function sendColorToIpad(candidate) {
             const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
             const rgb = candidate.rgb;
@@ -524,7 +730,7 @@
                 testColorInfo.textContent = `CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%`;
             }
 
-            // Send to iPad
+            // Send to other device
             connection.sendMessage({
                 type: 'color',
                 rgb: rgb,
