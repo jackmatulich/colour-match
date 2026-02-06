@@ -589,18 +589,19 @@
                 try {
                     // Clear any existing content
                     qrElement.innerHTML = '';
+                    // qrcodejs uses correctLevel (0-3) where 3 is highest error correction
                     qrCode = new QRCode(qrElement, {
                         text: url,
                         width: 300,
                         height: 300,
-                        correctLevel: QRCode.CorrectLevel.H,
+                        correctLevel: 3, // Highest error correction (H level)
                         colorDark: '#000000',
                         colorLight: '#ffffff'
                     });
-                    console.log('QR code generated for URL:', url.substring(0, 50) + '...');
+                    console.log('QR code generated successfully. URL length:', url.length);
                 } catch (err) {
                     console.error('Error generating QR code:', err);
-                    qrElement.innerHTML = '<p style="color: red;">Error generating QR code. URL: ' + url.substring(0, 100) + '...</p>';
+                    qrElement.innerHTML = '<p style="color: red; padding: 10px;">Error: ' + err.message + '</p>';
                 }
             } else {
                 console.error('QRCode library not loaded or element not found', {
@@ -608,7 +609,7 @@
                     hasElement: !!qrElement
                 });
                 if (qrContainer) {
-                    qrContainer.innerHTML = '<p style="color: red;">QR Code library not loaded. Please refresh the page.</p>';
+                    qrContainer.innerHTML = '<p style="color: red; padding: 10px;">QR Code library not loaded. Please refresh the page.</p>';
                 }
             }
 
