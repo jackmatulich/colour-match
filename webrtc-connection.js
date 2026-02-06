@@ -348,10 +348,10 @@ async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
     
     try {
         // Convert RTCIceCandidate to plain object for storage
-        const candidateObj = candidate.candidate ? candidate : {
+        const candidateObj = {
             candidate: candidate.candidate || candidate,
-            sdpMLineIndex: candidate.sdpMLineIndex,
-            sdpMid: candidate.sdpMid
+            sdpMLineIndex: candidate.sdpMLineIndex !== undefined ? candidate.sdpMLineIndex : null,
+            sdpMid: candidate.sdpMid || null
         };
         
         const response = await fetch(dweetUrl, {

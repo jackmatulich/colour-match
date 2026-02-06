@@ -604,7 +604,7 @@
                         if (candidateTimestamp > lastOffererIceTimestamp) {
                             lastOffererIceTimestamp = candidateTimestamp;
                             try {
-                                await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate.candidate || iceCandidate));
+                                await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate.candidate));
                                 console.log('Added ICE candidate from offerer');
                             } catch (err) {
                                 // Candidate might already be added, that's ok
