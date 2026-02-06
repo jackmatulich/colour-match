@@ -309,14 +309,10 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Store SDP on dweet.io and generate short URL
+ * Store SDP on dweet.io for signaling
  */
-async function generateShareableUrl(sdp, baseUrl = null) {
-    // Generate short session ID (6 chars)
-    const sessionId = generateSessionId();
-    
-    // Store SDP on dweet.io
-    const thingName = `colormatch-${sessionId}`;
+async function storeSdpOnDweet(sessionId, sdp, type) {
+    const thingName = `colormatch-${sessionId}-${type}`;
     const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
     
     try {
@@ -326,7 +322,7 @@ async function generateShareableUrl(sdp, baseUrl = null) {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                type: 'offer',
+                type: type,
                 sdp: encodeSdp(sdp),
                 timestamp: Date.now()
             })
@@ -336,38 +332,62 @@ async function generateShareableUrl(sdp, baseUrl = null) {
             throw new Error('Failed to store on dweet.io');
         }
         
-        // Get the full base URL including path
-        if (!baseUrl) {
-            const pathname = window.location.pathname;
-            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-            baseUrl = window.location.origin + directory;
-        }
-        
-        // Use the phone page for offer, iPad page for answer
-        const isPhone = window.location.pathname.includes('phone');
-        const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-        
-        // URL with just the short session ID - MUCH shorter!
-        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-        const url = `${cleanBase}${targetPage}?session=${sessionId}`;
-        
-        // Also store locally for fallback
-        storeSdp(sessionId, sdp, 'offer');
-        
-        return { url: url, sessionId: sessionId };
+        return true;
     } catch (err) {
         console.error('Error storing on dweet.io:', err);
-        // Fallback to local storage only
+        return false;
+    }
+}
+
+/**
+ * Store ICE candidate on dweet.io
+ */
+async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
+    const thingName = `colormatch-${sessionId}-ice-${isOfferer ? 'offerer' : 'answerer'}`;
+    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
+    
+    try {
+        const response = await fetch(dweetUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                candidate: candidate,
+                timestamp: Date.now()
+            })
+        });
+        
+        return response.ok;
+    } catch (err) {
+        console.error('Error storing ICE candidate:', err);
+        return false;
+    }
+}
+
+/**
+ * Generate shareable URL with short session ID
+ */
+function generateShareableUrl(sdp, baseUrl = null) {
+    // Generate short session ID (6 chars)
+    const sessionId = generateSessionId();
+    
+    // Get the full base URL including path
+    if (!baseUrl) {
         const pathname = window.location.pathname;
         const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-        const baseUrl = window.location.origin + directory;
-        const isPhone = window.location.pathname.includes('phone');
-        const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-        const url = `${cleanBase}${targetPage}?session=${sessionId}`;
-        storeSdp(sessionId, sdp, 'offer');
-        return { url: url, sessionId: sessionId };
+        baseUrl = window.location.origin + directory;
     }
+    
+    // Use the phone page for offer, iPad page for answer
+    const isPhone = window.location.pathname.includes('phone');
+    const targetPage = isPhone ? 'ipad.html' : 'phone.html';
+    
+    // URL with just the short session ID
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    const url = `${cleanBase}${targetPage}?session=${sessionId}`;
+    
+    return { url: url, sessionId: sessionId };
 }
 
 /**
@@ -386,60 +406,23 @@ function generateShareableUrlWithSession(sessionId, baseUrl = null) {
 }
 
 /**
- * Store answer on dweet.io and generate short URL
+ * Generate answer URL (answer is stored on dweet.io, not in URL)
  */
-async function generateAnswerUrl(answer, sessionId, baseUrl = null) {
+function generateAnswerUrl(answer, sessionId, baseUrl = null) {
     if (!sessionId) {
         sessionId = generateSessionId();
     }
     
-    // Store answer on dweet.io
-    const thingName = `colormatch-${sessionId}-answer`;
-    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
-    
-    try {
-        const response = await fetch(dweetUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                type: 'answer',
-                sdp: encodeSdp(answer),
-                timestamp: Date.now()
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to store on dweet.io');
-        }
-        
-        if (!baseUrl) {
-            const pathname = window.location.pathname;
-            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-            baseUrl = window.location.origin + directory;
-        }
-        
-        // Store locally for fallback
-        storeSdp(sessionId, answer, 'answer');
-        
-        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-        const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
-        
-        return { url: url, sessionId: sessionId };
-    } catch (err) {
-        console.error('Error storing answer on dweet.io:', err);
-        // Fallback
-        if (!baseUrl) {
-            const pathname = window.location.pathname;
-            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-            baseUrl = window.location.origin + directory;
-        }
-        storeSdp(sessionId, answer, 'answer');
-        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-        const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
-        return { url: url, sessionId: sessionId };
+    if (!baseUrl) {
+        const pathname = window.location.pathname;
+        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        baseUrl = window.location.origin + directory;
     }
+    
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
+    
+    return { url: url, sessionId: sessionId };
 }
 
 /**
@@ -472,9 +455,7 @@ if (typeof window !== 'undefined') {
  * Retrieve SDP from dweet.io using session ID
  */
 async function retrieveSdpFromDweet(sessionId, type) {
-    const thingName = type === 'answer' 
-        ? `colormatch-${sessionId}-answer`
-        : `colormatch-${sessionId}`;
+    const thingName = `colormatch-${sessionId}-${type}`;
     
     try {
         const response = await fetch(`https://dweet.io/get/latest/dweet/for/${thingName}`);
@@ -492,6 +473,32 @@ async function retrieveSdpFromDweet(sessionId, type) {
         return null;
     } catch (err) {
         console.error('Error retrieving from dweet.io:', err);
+        return null;
+    }
+}
+
+/**
+ * Retrieve ICE candidates from dweet.io
+ */
+async function retrieveIceCandidatesFromDweet(sessionId, isOfferer) {
+    const thingName = `colormatch-${sessionId}-ice-${isOfferer ? 'answerer' : 'offerer'}`;
+    
+    try {
+        const response = await fetch(`https://dweet.io/get/latest/dweet/for/${thingName}`);
+        if (!response.ok) {
+            return null;
+        }
+        
+        const data = await response.json();
+        if (data.with && data.with.length > 0) {
+            const dweet = data.with[0];
+            if (dweet.content && dweet.content.candidate) {
+                return dweet.content.candidate;
+            }
+        }
+        return null;
+    } catch (err) {
+        console.error('Error retrieving ICE candidates:', err);
         return null;
     }
 }
@@ -524,4 +531,7 @@ if (typeof window !== 'undefined') {
     window.decodeSdp = decodeSdp;
     window.extractSdpFromUrl = extractSdpFromUrl;
     window.retrieveSdpFromDweet = retrieveSdpFromDweet;
+    window.storeSdpOnDweet = storeSdpOnDweet;
+    window.storeIceCandidateOnDweet = storeIceCandidateOnDweet;
+    window.retrieveIceCandidatesFromDweet = retrieveIceCandidatesFromDweet;
 }

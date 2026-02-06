@@ -397,50 +397,46 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate short URL with session ID (SDP stored on dweet.io)
-                const urlData = await generateShareableUrl(offer);
+                // Generate short URL with session ID
+                const urlData = generateShareableUrl(offer);
+                
+                // Store offer on dweet.io for signaling
+                await storeSdpOnDweet(urlData.sessionId, offer, 'offer');
+                
                 displayQRCode(urlData.url, urlData.sessionId, offer);
                 
-                // Wait for answer - poll dweet.io for answer
+                // Set up ICE candidate handler to store on dweet.io
+                connection.onIceCandidate(async (candidate) => {
+                    if (candidate) {
+                        await storeIceCandidateOnDweet(urlData.sessionId, candidate, true);
+                    }
+                });
+                
+                // Poll dweet.io for answer and ICE candidates
                 const checkInterval = setInterval(async () => {
                     if (!connection) {
                         clearInterval(checkInterval);
                         return;
                     }
                     
-                    // Check URL params for answer (legacy)
-                    const sdpData = extractSdpFromUrl();
-                    if (sdpData && sdpData.type === 'answer') {
+                    // Check for answer
+                    const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
+                    if (answer && connection.pc && !connection.pc.remoteDescription) {
                         clearInterval(checkInterval);
-                        connection.setRemoteDescription(sdpData.sdp).then(() => {
-                            status.textContent = 'Connection established';
-                            status.className = 'status connected';
-                            colorControls.style.display = 'block';
-                            qrContainer.style.display = 'none';
-                        }).catch(err => {
-                            console.error('Error setting remote description:', err);
-                            alert('Error establishing connection: ' + err.message);
-                        });
-                        return;
-                    }
-                    
-                    // Check dweet.io for answer
-                    if (urlData && urlData.sessionId) {
-                        const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
-                        if (answer) {
-                            clearInterval(checkInterval);
-                            connection.setRemoteDescription(answer).then(() => {
-                                status.textContent = 'Connection established';
-                                status.className = 'status connected';
-                                colorControls.style.display = 'block';
-                                qrContainer.style.display = 'none';
-                            }).catch(err => {
-                                console.error('Error setting remote description:', err);
-                                alert('Error establishing connection: ' + err.message);
-                            });
+                        await connection.setRemoteDescription(answer);
+                        
+                        // Get ICE candidates from answerer
+                        const iceCandidate = await retrieveIceCandidatesFromDweet(urlData.sessionId, true);
+                        if (iceCandidate) {
+                            await connection.pc.addIceCandidate(iceCandidate);
                         }
+                        
+                        status.textContent = 'Connection established';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                        qrContainer.style.display = 'none';
                     }
-                }, 2000); // Check every 2 seconds
+                }, 1000); // Check every second
                 
                 setTimeout(() => clearInterval(checkInterval), 300000);
                 
@@ -547,15 +543,38 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Get session ID from URL if available
+                // Get session ID from URL
                 const sessionInfo = extractSessionFromUrl();
                 const sessionId = sessionInfo ? sessionInfo.sessionId : null;
                 
-                // Generate answer URL (stores on dweet.io) and show QR code
-                const urlData = await generateAnswerUrl(answer, sessionId);
+                if (!sessionId) {
+                    alert('No session ID found');
+                    joinOfferBtn.disabled = false;
+                    return;
+                }
+                
+                // Store answer on dweet.io for signaling
+                await storeSdpOnDweet(sessionId, answer, 'answer');
+                
+                // Set up ICE candidate handler to store on dweet.io
+                connection.onIceCandidate(async (candidate) => {
+                    if (candidate) {
+                        await storeIceCandidateOnDweet(sessionId, candidate, false);
+                    }
+                });
+                
+                // Get ICE candidates from offerer
+                const iceCandidate = await retrieveIceCandidatesFromDweet(sessionId, false);
+                if (iceCandidate && connection.pc) {
+                    await connection.pc.addIceCandidate(iceCandidate);
+                }
+                
+                // Generate answer URL and show QR code
+                const urlData = generateAnswerUrl(answer, sessionId);
                 displayQRCode(urlData.url, urlData.sessionId, answer);
                 
-                // Connection completes when other device loads the answer URL
+                status.textContent = 'Answer sent! Waiting for connection...';
+                status.className = 'status';
                 
             } catch (err) {
                 console.error('Error connecting:', err);
