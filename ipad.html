@@ -290,32 +290,53 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate URL with encoded offer
-                const shareableUrl = generateShareableUrl(offer);
+                // Generate short URL with session ID
+                const urlData = generateShareableUrl(offer);
                 // Show QR code
                 if (window.QRCode) {
                     const qrContainer = document.getElementById('answerQrCode');
                     if (qrContainer) {
                         qrContainer.innerHTML = '';
                         new QRCode(qrContainer, {
-                            text: shareableUrl,
-                            width: 200,
-                            height: 200
+                            text: urlData.url,
+                            width: 250,
+                            height: 250,
+                            errorCorrectionLevel: 'H',
+                            colorDark: '#000000',
+                            colorLight: '#ffffff',
+                            correctLevel: QRCode.CorrectLevel.H
                         });
                     }
                 }
                 answerSection.classList.add('active');
                 
-                // Wait for answer - check URL params periodically
+                // Wait for answer - check URL params and sessionStorage
                 const checkInterval = setInterval(() => {
                     if (!connection) {
                         clearInterval(checkInterval);
                         return;
                     }
+                    
+                    // Check URL params
                     const sdpData = extractSdpFromUrl();
                     if (sdpData && sdpData.type === 'answer') {
                         clearInterval(checkInterval);
                         connection.setRemoteDescription(sdpData.sdp).then(() => {
+                            status.textContent = 'Connection established';
+                            status.className = 'status connected';
+                            answerSection.classList.remove('active');
+                            connectedSection.classList.add('active');
+                        }).catch(err => {
+                            console.error('Error setting remote description:', err);
+                        });
+                        return;
+                    }
+                    
+                    // Check sessionStorage
+                    const answer = retrieveSdp(urlData.sessionId, 'answer');
+                    if (answer) {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(answer).then(() => {
                             status.textContent = 'Connection established';
                             status.className = 'status connected';
                             answerSection.classList.remove('active');

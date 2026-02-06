@@ -270,11 +270,15 @@ function encodeSdp(sdp) {
 }
 
 /**
- * Decode SDP from base64
+ * Decode SDP from base64 (handles base64url encoding too)
  */
 function decodeSdp(encoded) {
     try {
-        return JSON.parse(atob(encoded));
+        // Handle base64url encoding (URL-safe)
+        const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+        // Add padding if needed
+        const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
+        return JSON.parse(atob(padded));
     } catch (e) {
         console.error('Error decoding SDP:', e);
         return null;
@@ -304,8 +308,8 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Generate shareable URL with short session ID
- * SDP is stored in sessionStorage, URL only contains short ID
+ * Generate shareable URL - uses compressed SDP encoding for shorter URLs
+ * Tries to balance between URL length and QR code scannability
  */
 function generateShareableUrl(sdp, baseUrl = null) {
     // Get the full base URL including path
@@ -319,13 +323,19 @@ function generateShareableUrl(sdp, baseUrl = null) {
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     
-    // Generate short session ID and store SDP locally
+    // Encode SDP - use base64url encoding (no padding, URL-safe)
+    const encoded = encodeSdp(sdp).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    
+    // URL with encoded SDP - longer but works across devices
+    // QR codes with high error correction can handle ~800-1000 chars
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    const url = `${cleanBase}${targetPage}?offer=${encoded}`;
+    
+    // Also store locally with session ID for fallback
     const sessionId = generateSessionId();
     storeSdp(sessionId, sdp, 'offer');
     
-    // URL only contains short session ID (much shorter!)
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return { url: `${cleanBase}${targetPage}?session=${sessionId}`, sessionId: sessionId };
+    return { url: url, sessionId: sessionId };
 }
 
 /**
