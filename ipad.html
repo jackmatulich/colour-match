@@ -249,6 +249,14 @@
         // Create offer (start session)
         createOfferBtn.addEventListener('click', async () => {
             try {
+                // Verify functions are available
+                if (typeof generateSessionId !== 'function') {
+                    throw new Error('generateSessionId function not loaded. Please refresh the page.');
+                }
+                if (typeof storeSdp !== 'function') {
+                    throw new Error('storeSdp function not loaded. Please refresh the page.');
+                }
+                
                 createOfferBtn.disabled = true;
                 status.textContent = 'Creating connection...';
                 status.className = 'status';
@@ -338,6 +346,14 @@
         // Connect to other device (join session)
         connectBtn.addEventListener('click', async () => {
             try {
+                // Verify functions are available
+                if (typeof extractSessionFromUrl !== 'function') {
+                    throw new Error('extractSessionFromUrl function not loaded. Please refresh the page.');
+                }
+                if (typeof retrieveSdp !== 'function') {
+                    throw new Error('retrieveSdp function not loaded. Please refresh the page.');
+                }
+                
                 const url = offerInput.value.trim();
                 if (!url) {
                     alert('Please enter a connection URL');
