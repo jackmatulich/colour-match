@@ -555,57 +555,6 @@
             }
         }
 
-        // Note: Legacy connectBtn removed - using new dual-mode system
-            try {
-                connectBtn.disabled = true;
-                status.textContent = 'Creating connection...';
-                status.className = 'status';
-
-                connection = new WebRTCConnection();
-
-                connection.onConnectionStateChange((state) => {
-                    console.log('Connection state:', state);
-                    if (state === 'connected') {
-                        status.textContent = 'Connected to iPad';
-                        status.className = 'status connected';
-                        colorControls.style.display = 'block';
-                    } else if (state === 'disconnected' || state === 'failed') {
-                        status.textContent = 'Disconnected';
-                        status.className = 'status disconnected';
-                    }
-                });
-
-                connection.onDataChannelStateChange((isOpen) => {
-                    if (isOpen) {
-                        status.textContent = 'Data channel open';
-                        status.className = 'status connected';
-                    }
-                });
-
-                connection.onMessage((data) => {
-                    handleMessage(data);
-                });
-
-                const offer = await connection.initAsOfferer();
-                
-                // Generate short session ID and store SDP
-                const sessionId = generateSessionId();
-                storeSdp(sessionId, offer, 'offer');
-                
-                // Generate short URL with session ID
-                const shareableUrl = generateShareableUrl(sessionId);
-                displayQRCode(shareableUrl, sessionId, offer);
-
-                // Check if answer is in URL
-                checkForAnswer();
-                
-            } catch (err) {
-                console.error('Error creating connection:', err);
-                alert('Failed to create connection: ' + err.message);
-                createOfferBtn.disabled = false;
-            }
-        });
-
         // Display QR code with short URL and manual SDP option
         function displayQRCode(url, sessionId, sdp) {
             qrContainer.style.display = 'block';
