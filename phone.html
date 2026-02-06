@@ -184,12 +184,12 @@
                 </div>
             </div>
 
-            <div id="qrContainer">
+            <div id="qrContainer" style="display: none;">
             <div>Scan this QR code or share the URL:</div>
             <div id="qrcode"></div>
             <button id="copyUrlBtn" class="secondary">Copy URL</button>
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #555;">
-                <label style="display: block; margin-bottom: 5px; font-size: 12px;">Session ID (for manual entry):</label>
+                <label style="display: block; margin-bottom: 5px; font-size: 12px;">Session ID:</label>
                 <input type="text" id="sessionIdDisplay" readonly style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 14px; font-weight: bold; text-align: center;">
                 <label style="display: block; margin-bottom: 5px; font-size: 12px;">Or paste SDP from other device:</label>
                 <textarea id="sdpInput" placeholder="Paste SDP here" rows="3" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 11px; font-family: monospace;"></textarea>
@@ -385,9 +385,13 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate QR code with offer
-                const shareableUrl = generateShareableUrl(offer);
-                displayQRCode(shareableUrl);
+                // Generate short session ID and store SDP
+                const sessionId = generateSessionId();
+                storeSdp(sessionId, offer, 'offer');
+                
+                // Generate short URL with session ID
+                const shareableUrl = generateShareableUrl(sessionId);
+                displayQRCode(shareableUrl, sessionId, offer);
 
                 // Check if answer is in URL
                 checkForAnswer();
