@@ -401,14 +401,14 @@
                 const urlData = await generateShareableUrl(offer);
                 displayQRCode(urlData.url, urlData.sessionId, offer);
                 
-                // Wait for answer - poll for answer URL or check sessionStorage
-                const checkInterval = setInterval(() => {
+                // Wait for answer - poll dweet.io for answer
+                const checkInterval = setInterval(async () => {
                     if (!connection) {
                         clearInterval(checkInterval);
                         return;
                     }
                     
-                    // Check URL params for answer
+                    // Check URL params for answer (legacy)
                     const sdpData = extractSdpFromUrl();
                     if (sdpData && sdpData.type === 'answer') {
                         clearInterval(checkInterval);
@@ -423,7 +423,24 @@
                         });
                         return;
                     }
-                }, 1000);
+                    
+                    // Check dweet.io for answer
+                    if (urlData && urlData.sessionId) {
+                        const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
+                        if (answer) {
+                            clearInterval(checkInterval);
+                            connection.setRemoteDescription(answer).then(() => {
+                                status.textContent = 'Connection established';
+                                status.className = 'status connected';
+                                colorControls.style.display = 'block';
+                                qrContainer.style.display = 'none';
+                            }).catch(err => {
+                                console.error('Error setting remote description:', err);
+                                alert('Error establishing connection: ' + err.message);
+                            });
+                        }
+                    }
+                }, 2000); // Check every 2 seconds
                 
                 setTimeout(() => clearInterval(checkInterval), 300000);
                 
