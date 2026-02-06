@@ -431,12 +431,12 @@
                     // Continuously poll for ICE candidates from answerer
                     if (answerReceived) {
                         const iceCandidate = await retrieveIceCandidatesFromDweet(urlData.sessionId, true);
-                        if (iceCandidate) {
+                        if (iceCandidate && iceCandidate.candidate) {
                             const candidateTimestamp = iceCandidate.timestamp || 0;
                             if (candidateTimestamp > lastAnswererIceTimestamp) {
                                 lastAnswererIceTimestamp = candidateTimestamp;
                                 try {
-                                    await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate));
+                                    await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate.candidate));
                                     console.log('Added ICE candidate from answerer');
                                 } catch (err) {
                                     // Candidate might already be added, that's ok
