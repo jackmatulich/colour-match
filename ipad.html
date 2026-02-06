@@ -320,24 +320,47 @@
                 });
                 
                 // Poll dweet.io for answer and ICE candidates
+                let answerReceived = false;
+                let lastAnswererIceTimestamp = 0;
                 const checkInterval = setInterval(async () => {
-                    if (!connection) {
+                    if (!connection || !connection.pc) {
                         clearInterval(checkInterval);
                         return;
                     }
                     
                     // Check for answer
-                    const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
-                    if (answer && connection.pc && !connection.pc.remoteDescription) {
-                        clearInterval(checkInterval);
-                        await connection.setRemoteDescription(answer);
-                        
-                        // Get ICE candidates from answerer
-                        const iceCandidate = await retrieveIceCandidatesFromDweet(urlData.sessionId, true);
-                        if (iceCandidate) {
-                            await connection.pc.addIceCandidate(iceCandidate);
+                    if (!answerReceived) {
+                        const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
+                        if (answer && !connection.pc.remoteDescription) {
+                            answerReceived = true;
+                            await connection.setRemoteDescription(answer);
+                            console.log('Answer received and set');
                         }
-                        
+                    }
+                    
+                    // Continuously poll for ICE candidates from answerer
+                    if (answerReceived) {
+                        const iceCandidate = await retrieveIceCandidatesFromDweet(urlData.sessionId, true);
+                        if (iceCandidate && iceCandidate.candidate) {
+                            const candidateTimestamp = iceCandidate.timestamp || 0;
+                            if (candidateTimestamp > lastAnswererIceTimestamp) {
+                                lastAnswererIceTimestamp = candidateTimestamp;
+                                try {
+                                    await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate.candidate || iceCandidate));
+                                    console.log('Added ICE candidate from answerer');
+                                } catch (err) {
+                                    // Candidate might already be added, that's ok
+                                    if (err.name !== 'OperationError') {
+                                        console.error('Error adding ICE candidate:', err);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Update status based on connection state
+                    if (connection.pc.connectionState === 'connected') {
+                        clearInterval(checkInterval);
                         status.textContent = 'Connection established';
                         status.className = 'status connected';
                         answerSection.classList.remove('active');
