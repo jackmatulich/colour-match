@@ -397,8 +397,8 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate short URL with session ID (SDP stored locally)
-                const urlData = generateShareableUrl(offer);
+                // Generate short URL with session ID (SDP stored on dweet.io)
+                const urlData = await generateShareableUrl(offer);
                 displayQRCode(urlData.url, urlData.sessionId, offer);
                 
                 // Wait for answer - poll for answer URL or check sessionStorage
@@ -534,8 +534,8 @@
                 const sessionInfo = extractSessionFromUrl();
                 const sessionId = sessionInfo ? sessionInfo.sessionId : null;
                 
-                // Generate answer URL with encoded answer and show QR code
-                const urlData = generateAnswerUrl(answer, sessionId);
+                // Generate answer URL (stores on dweet.io) and show QR code
+                const urlData = await generateAnswerUrl(answer, sessionId);
                 displayQRCode(urlData.url, urlData.sessionId, answer);
                 
                 // Connection completes when other device loads the answer URL

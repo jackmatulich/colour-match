@@ -289,8 +289,8 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate short URL with session ID
-                const urlData = generateShareableUrl(offer);
+                // Generate short URL with session ID (stores on dweet.io)
+                const urlData = await generateShareableUrl(offer);
                 // Show QR code
                 if (window.QRCode) {
                     const qrContainer = document.getElementById('answerQrCode');
@@ -469,8 +469,8 @@
                 const sessionInfo = extractSessionFromUrl();
                 const sessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
                 
-                // Generate short answer URL with session ID
-                const urlData = generateAnswerUrl(answer, sessionId);
+                // Generate short answer URL (stores on dweet.io)
+                const urlData = await generateAnswerUrl(answer, sessionId);
                 displayAnswerUrl(urlData.url, urlData.sessionId, answer);
                 
                 // Connection completes when other device loads answer URL or polls sessionStorage

@@ -309,34 +309,65 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Generate shareable URL - uses compressed SDP encoding for shorter URLs
- * Tries to balance between URL length and QR code scannability
+ * Store SDP on dweet.io and generate short URL
  */
-function generateShareableUrl(sdp, baseUrl = null) {
-    // Get the full base URL including path
-    if (!baseUrl) {
+async function generateShareableUrl(sdp, baseUrl = null) {
+    // Generate short session ID (6 chars)
+    const sessionId = generateSessionId();
+    
+    // Store SDP on dweet.io
+    const thingName = `colormatch-${sessionId}`;
+    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
+    
+    try {
+        const response = await fetch(dweetUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'offer',
+                sdp: encodeSdp(sdp),
+                timestamp: Date.now()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to store on dweet.io');
+        }
+        
+        // Get the full base URL including path
+        if (!baseUrl) {
+            const pathname = window.location.pathname;
+            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+            baseUrl = window.location.origin + directory;
+        }
+        
+        // Use the phone page for offer, iPad page for answer
+        const isPhone = window.location.pathname.includes('phone');
+        const targetPage = isPhone ? 'ipad.html' : 'phone.html';
+        
+        // URL with just the short session ID - MUCH shorter!
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        const url = `${cleanBase}${targetPage}?session=${sessionId}`;
+        
+        // Also store locally for fallback
+        storeSdp(sessionId, sdp, 'offer');
+        
+        return { url: url, sessionId: sessionId };
+    } catch (err) {
+        console.error('Error storing on dweet.io:', err);
+        // Fallback to local storage only
         const pathname = window.location.pathname;
         const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-        baseUrl = window.location.origin + directory;
+        const baseUrl = window.location.origin + directory;
+        const isPhone = window.location.pathname.includes('phone');
+        const targetPage = isPhone ? 'ipad.html' : 'phone.html';
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        const url = `${cleanBase}${targetPage}?session=${sessionId}`;
+        storeSdp(sessionId, sdp, 'offer');
+        return { url: url, sessionId: sessionId };
     }
-    
-    // Use the phone page for offer, iPad page for answer
-    const isPhone = window.location.pathname.includes('phone');
-    const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-    
-    // Encode SDP - use base64url encoding (no padding, URL-safe)
-    const encoded = encodeSdp(sdp).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    
-    // URL with encoded SDP - longer but works across devices
-    // QR codes with high error correction can handle ~800-1000 chars
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    const url = `${cleanBase}${targetPage}?offer=${encoded}`;
-    
-    // Also store locally with session ID for fallback
-    const sessionId = generateSessionId();
-    storeSdp(sessionId, sdp, 'offer');
-    
-    return { url: url, sessionId: sessionId };
 }
 
 /**
@@ -355,27 +386,60 @@ function generateShareableUrlWithSession(sessionId, baseUrl = null) {
 }
 
 /**
- * Generate shareable URL for answer - uses compressed encoding
+ * Store answer on dweet.io and generate short URL
  */
-function generateAnswerUrl(answer, sessionId, baseUrl = null) {
-    if (!baseUrl) {
-        const pathname = window.location.pathname;
-        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
-        baseUrl = window.location.origin + directory;
+async function generateAnswerUrl(answer, sessionId, baseUrl = null) {
+    if (!sessionId) {
+        sessionId = generateSessionId();
     }
     
-    // Encode answer - use base64url encoding (no padding, URL-safe)
-    const encoded = encodeSdp(answer).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    // Store answer on dweet.io
+    const thingName = `colormatch-${sessionId}-answer`;
+    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
     
-    // Store answer locally with session ID for fallback
-    if (sessionId) {
+    try {
+        const response = await fetch(dweetUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                type: 'answer',
+                sdp: encodeSdp(answer),
+                timestamp: Date.now()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to store on dweet.io');
+        }
+        
+        if (!baseUrl) {
+            const pathname = window.location.pathname;
+            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+            baseUrl = window.location.origin + directory;
+        }
+        
+        // Store locally for fallback
         storeSdp(sessionId, answer, 'answer');
+        
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
+        
+        return { url: url, sessionId: sessionId };
+    } catch (err) {
+        console.error('Error storing answer on dweet.io:', err);
+        // Fallback
+        if (!baseUrl) {
+            const pathname = window.location.pathname;
+            const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+            baseUrl = window.location.origin + directory;
+        }
+        storeSdp(sessionId, answer, 'answer');
+        const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+        const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
+        return { url: url, sessionId: sessionId };
     }
-    
-    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    const url = `${cleanBase}phone.html?answer=${encoded}`;
-    
-    return { url: url, sessionId: sessionId };
 }
 
 /**
@@ -405,6 +469,34 @@ if (typeof window !== 'undefined') {
 }
 
 /**
+ * Retrieve SDP from dweet.io using session ID
+ */
+async function retrieveSdpFromDweet(sessionId, type) {
+    const thingName = type === 'answer' 
+        ? `colormatch-${sessionId}-answer`
+        : `colormatch-${sessionId}`;
+    
+    try {
+        const response = await fetch(`https://dweet.io/get/latest/dweet/for/${thingName}`);
+        if (!response.ok) {
+            return null;
+        }
+        
+        const data = await response.json();
+        if (data.with && data.with.length > 0) {
+            const dweet = data.with[0];
+            if (dweet.content && dweet.content.sdp) {
+                return decodeSdp(dweet.content.sdp);
+            }
+        }
+        return null;
+    } catch (err) {
+        console.error('Error retrieving from dweet.io:', err);
+        return null;
+    }
+}
+
+/**
  * Extract SDP from URL parameters (legacy support)
  */
 function extractSdpFromUrl() {
@@ -431,4 +523,5 @@ if (typeof window !== 'undefined') {
     window.encodeSdp = encodeSdp;
     window.decodeSdp = decodeSdp;
     window.extractSdpFromUrl = extractSdpFromUrl;
+    window.retrieveSdpFromDweet = retrieveSdpFromDweet;
 }
