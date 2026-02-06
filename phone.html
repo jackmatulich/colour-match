@@ -385,15 +385,6 @@
                 connection.onMessage((data) => {
                     handleMessage(data);
                 });
-                
-                // Handle ICE candidates from answerer
-                connection.onIceCandidate((candidate) => {
-                    if (connection && connection.pc) {
-                        connection.pc.addIceCandidate(candidate).catch(err => {
-                            console.error('Error adding ICE candidate:', err);
-                        });
-                    }
-                });
 
                 const offer = await connection.initAsOfferer();
                 
@@ -406,31 +397,60 @@
                 displayQRCode(urlData.url, urlData.sessionId, offer);
                 
                 // Set up ICE candidate handler to store on dweet.io
+                let lastIceTimestamp = 0;
                 connection.onIceCandidate(async (candidate) => {
                     if (candidate) {
-                        await storeIceCandidateOnDweet(urlData.sessionId, candidate, true);
+                        const now = Date.now();
+                        // Only store if it's been at least 500ms since last one (avoid spam)
+                        if (now - lastIceTimestamp > 500) {
+                            await storeIceCandidateOnDweet(urlData.sessionId, candidate, true);
+                            lastIceTimestamp = now;
+                        }
                     }
                 });
                 
                 // Poll dweet.io for answer and ICE candidates
+                let answerReceived = false;
+                let lastAnswererIceTimestamp = 0;
                 const checkInterval = setInterval(async () => {
-                    if (!connection) {
+                    if (!connection || !connection.pc) {
                         clearInterval(checkInterval);
                         return;
                     }
                     
                     // Check for answer
-                    const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
-                    if (answer && connection.pc && !connection.pc.remoteDescription) {
-                        clearInterval(checkInterval);
-                        await connection.setRemoteDescription(answer);
-                        
-                        // Get ICE candidates from answerer
+                    if (!answerReceived) {
+                        const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
+                        if (answer && !connection.pc.remoteDescription) {
+                            answerReceived = true;
+                            await connection.setRemoteDescription(answer);
+                            console.log('Answer received and set');
+                        }
+                    }
+                    
+                    // Continuously poll for ICE candidates from answerer
+                    if (answerReceived) {
                         const iceCandidate = await retrieveIceCandidatesFromDweet(urlData.sessionId, true);
                         if (iceCandidate) {
-                            await connection.pc.addIceCandidate(iceCandidate);
+                            const candidateTimestamp = iceCandidate.timestamp || 0;
+                            if (candidateTimestamp > lastAnswererIceTimestamp) {
+                                lastAnswererIceTimestamp = candidateTimestamp;
+                                try {
+                                    await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate));
+                                    console.log('Added ICE candidate from answerer');
+                                } catch (err) {
+                                    // Candidate might already be added, that's ok
+                                    if (err.name !== 'OperationError') {
+                                        console.error('Error adding ICE candidate:', err);
+                                    }
+                                }
+                            }
                         }
-                        
+                    }
+                    
+                    // Update status based on connection state
+                    if (connection.pc.connectionState === 'connected') {
+                        clearInterval(checkInterval);
                         status.textContent = 'Connection established';
                         status.className = 'status connected';
                         colorControls.style.display = 'block';

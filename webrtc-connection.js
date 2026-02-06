@@ -347,13 +347,20 @@ async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
     const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
     
     try {
+        // Convert RTCIceCandidate to plain object for storage
+        const candidateObj = candidate.candidate ? candidate : {
+            candidate: candidate.candidate || candidate,
+            sdpMLineIndex: candidate.sdpMLineIndex,
+            sdpMid: candidate.sdpMid
+        };
+        
         const response = await fetch(dweetUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                candidate: candidate,
+                candidate: candidateObj,
                 timestamp: Date.now()
             })
         });
