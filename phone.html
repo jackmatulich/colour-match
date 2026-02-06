@@ -184,14 +184,16 @@
                 </div>
             </div>
 
-        <div id="qrContainer">
-            <div>Scan this QR code with iPad:</div>
+            <div id="qrContainer">
+            <div>Scan this QR code or share the URL:</div>
             <div id="qrcode"></div>
             <button id="copyUrlBtn" class="secondary">Copy URL</button>
             <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #555;">
-                <label style="display: block; margin-bottom: 5px;">Or enter answer URL from iPad:</label>
-                <input type="text" id="answerInput" placeholder="Paste answer URL here" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px;">
-                <button id="submitAnswerBtn" class="secondary">Submit Answer</button>
+                <label style="display: block; margin-bottom: 5px; font-size: 12px;">Session ID (for manual entry):</label>
+                <input type="text" id="sessionIdDisplay" readonly style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 14px; font-weight: bold; text-align: center;">
+                <label style="display: block; margin-bottom: 5px; font-size: 12px;">Or paste SDP from other device:</label>
+                <textarea id="sdpInput" placeholder="Paste SDP here" rows="3" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 11px; font-family: monospace;"></textarea>
+                <button id="submitSdpBtn" class="secondary">Submit SDP</button>
             </div>
         </div>
 
@@ -255,8 +257,9 @@
         const testColorSwatch = document.getElementById('testColorSwatch');
         const testColorInfo = document.getElementById('testColorInfo');
         const copyUrlBtn = document.getElementById('copyUrlBtn');
-        const answerInput = document.getElementById('answerInput');
-        const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+        const sessionIdDisplay = document.getElementById('sessionIdDisplay');
+        const sdpInput = document.getElementById('sdpInput');
+        const submitSdpBtn = document.getElementById('submitSdpBtn');
         const modeSelection = document.getElementById('modeSelection');
         const startSessionBtn = document.getElementById('startSessionBtn');
         const joinSessionBtn = document.getElementById('joinSessionBtn');
@@ -409,30 +412,57 @@
                 status.textContent = 'Connecting...';
                 status.className = 'status';
 
-                // Extract offer from URL
-                let sdpData = extractSdpFromUrl();
+                // Extract offer from URL (new session-based or legacy)
                 let offer = null;
+                const sessionInfo = extractSessionFromUrl();
                 
-                if (sdpData && sdpData.type === 'offer') {
-                    offer = sdpData.sdp;
-                } else {
-                    try {
-                        const urlObj = new URL(url);
-                        const offerParam = urlObj.searchParams.get('offer');
-                        if (offerParam) {
-                            offer = decodeSdp(offerParam);
-                        } else {
-                            offer = decodeSdp(url);
+                if (sessionInfo && sessionInfo.type === 'offer') {
+                    // New session-based approach
+                    offer = retrieveSdp(sessionInfo.sessionId, 'offer');
+                    if (!offer) {
+                        alert('Session not found. Please check the URL or enter SDP manually.');
+                        // Show SDP input for manual entry
+                        if (sdpInput) {
+                            sdpInput.style.display = 'block';
                         }
-                    } catch (e) {
-                        alert('Invalid connection URL. Please check and try again.');
                         joinOfferBtn.disabled = false;
                         return;
+                    }
+                } else {
+                    // Legacy URL-based approach
+                    const sdpData = extractSdpFromUrl();
+                    if (sdpData && sdpData.type === 'offer') {
+                        offer = sdpData.sdp;
+                    } else {
+                        // Try parsing as direct SDP or URL
+                        try {
+                            const urlObj = new URL(url);
+                            const offerParam = urlObj.searchParams.get('offer');
+                            if (offerParam) {
+                                offer = decodeSdp(offerParam);
+                            } else {
+                                // Maybe it's a direct SDP string
+                                offer = decodeSdp(url);
+                            }
+                        } catch (e) {
+                            // Not a URL, maybe it's a session ID or SDP
+                            // Check if it's a 6-char session ID
+                            if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
+                                offer = retrieveSdp(url, 'offer');
+                            } else {
+                                // Try as direct SDP
+                                offer = decodeSdp(url);
+                            }
+                        }
                     }
                 }
 
                 if (!offer) {
-                    alert('Could not extract offer from URL');
+                    alert('Could not extract offer. Please enter the SDP manually in the text area below.');
+                    if (sdpInput) {
+                        sdpInput.style.display = 'block';
+                        sdpInput.focus();
+                    }
                     joinOfferBtn.disabled = false;
                     return;
                 }
@@ -465,9 +495,13 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Generate answer URL
-                const answerUrl = generateAnswerUrl(answer);
-                displayAnswerUrl(answerUrl);
+                // Store answer with same session ID if available, or generate new one
+                let answerSessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
+                storeSdp(answerSessionId, answer, 'answer');
+                
+                // Generate short answer URL
+                const answerUrl = generateAnswerUrl(answerSessionId);
+                displayAnswerUrl(answerUrl, answerSessionId, answer);
                 
             } catch (err) {
                 console.error('Error connecting:', err);
@@ -477,12 +511,10 @@
         });
 
         // Display answer URL (when joining)
-        function displayAnswerUrl(url) {
-            if (!answerInput) return;
-            answerInput.value = url;
+        function displayAnswerUrl(url, sessionId, answer) {
             qrContainer.style.display = 'block';
             
-            // Show QR code for answer
+            // Show QR code for answer (short URL now!)
             if (qrCode) {
                 qrCode.clear();
             }
@@ -492,11 +524,31 @@
                 height: 200
             });
 
+            // Show session ID
+            if (sessionIdDisplay && sessionId) {
+                sessionIdDisplay.value = sessionId;
+            }
+            
+            // Show SDP for manual copy
+            if (sdpInput) {
+                sdpInput.value = encodeSdp(answer);
+            }
+
             copyUrlBtn.onclick = () => {
                 navigator.clipboard.writeText(url).then(() => {
                     alert('Answer URL copied to clipboard!');
                 });
             };
+            
+            // Add copy SDP button
+            const copySdpBtn = document.getElementById('copySdpBtn');
+            if (copySdpBtn) {
+                copySdpBtn.onclick = () => {
+                    navigator.clipboard.writeText(encodeSdp(answer)).then(() => {
+                        alert('Answer SDP copied! Share this with the other device.');
+                    });
+                };
+            }
         }
 
         // Note: Legacy connectBtn removed - using new dual-mode system
@@ -532,11 +584,15 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate QR code with offer
-                const shareableUrl = generateShareableUrl(offer);
-                displayQRCode(shareableUrl);
+                // Generate short session ID and store SDP
+                const sessionId = generateSessionId();
+                storeSdp(sessionId, offer, 'offer');
+                
+                // Generate short URL with session ID
+                const shareableUrl = generateShareableUrl(sessionId);
+                displayQRCode(shareableUrl, sessionId, offer);
 
-                // Check if answer is in URL (iPad might have sent it back)
+                // Check if answer is in URL
                 checkForAnswer();
                 
             } catch (err) {
@@ -546,72 +602,103 @@
             }
         });
 
-        // Display QR code
-        function displayQRCode(url) {
+        // Display QR code with short URL and manual SDP option
+        function displayQRCode(url, sessionId, sdp) {
             qrContainer.style.display = 'block';
             if (qrCode) {
                 qrCode.clear();
             }
+            
+            // QR code with short URL (much shorter now!)
             qrCode = new QRCode(document.getElementById('qrcode'), {
                 text: url,
                 width: 200,
                 height: 200
             });
 
+            // Also show session ID and SDP for manual copy
+            const sdpText = encodeSdp(sdp);
+            const sdpDisplay = document.getElementById('sdpDisplay');
+            if (sdpDisplay) {
+                sdpDisplay.value = sdpText;
+            }
+
             copyUrlBtn.onclick = () => {
                 navigator.clipboard.writeText(url).then(() => {
                     alert('URL copied to clipboard!');
                 });
             };
+            
+            // Add copy SDP button functionality
+            const copySdpBtn = document.getElementById('copySdpBtn');
+            if (copySdpBtn) {
+                copySdpBtn.onclick = () => {
+                    navigator.clipboard.writeText(sdpText).then(() => {
+                        alert('SDP copied to clipboard! Share this with the other device.');
+                    });
+                };
+            }
 
-            // Handle answer submission
-            submitAnswerBtn.onclick = () => {
-                const answerUrl = answerInput.value.trim();
-                if (!answerUrl) {
-                    alert('Please enter an answer URL');
-                    return;
-                }
+            // Handle SDP submission (for answer when joining, or when receiving answer)
+            if (submitSdpBtn) {
+                submitSdpBtn.onclick = () => {
+                    const sdpText = sdpInput.value.trim();
+                    if (!sdpText) {
+                        alert('Please paste the SDP');
+                        return;
+                    }
 
-                try {
-                    const urlObj = new URL(answerUrl);
-                    const answerParam = urlObj.searchParams.get('answer');
-                    if (answerParam) {
-                        const answer = decodeSdp(answerParam);
-                        if (answer && connection) {
-                            connection.setRemoteDescription(answer).then(() => {
+                    try {
+                        const sdp = decodeSdp(sdpText);
+                        if (sdp && connection) {
+                            connection.setRemoteDescription(sdp).then(() => {
                                 status.textContent = 'Connection established';
                                 status.className = 'status connected';
                                 colorControls.style.display = 'block';
+                                qrContainer.style.display = 'none';
                             }).catch(err => {
                                 console.error('Error setting remote description:', err);
                                 alert('Failed to establish connection: ' + err.message);
                             });
                         } else {
-                            alert('Invalid answer format');
+                            alert('Invalid SDP format');
                         }
-                    } else {
-                        alert('No answer parameter found in URL');
+                    } catch (e) {
+                        alert('Error parsing SDP: ' + e.message);
                     }
-                } catch (e) {
-                    alert('Invalid URL: ' + e.message);
-                }
-            };
-
-            // Allow Enter key to submit
-            answerInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    submitAnswerBtn.click();
-                }
-            });
+                };
+            }
+            
+            // Update session ID display
+            if (sessionIdDisplay && sessionId) {
+                sessionIdDisplay.value = sessionId;
+            }
         }
 
-        // Check for answer in URL parameters
+        // Check for answer in URL parameters or session storage
         function checkForAnswer() {
+            // Check new session-based approach
+            const sessionInfo = extractSessionFromUrl();
+            if (sessionInfo && sessionInfo.type === 'answer' && connection) {
+                const answer = retrieveSdp(sessionInfo.sessionId, 'answer');
+                if (answer) {
+                    connection.setRemoteDescription(answer).then(() => {
+                        status.textContent = 'Connection established';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    }).catch(err => {
+                        console.error('Error setting remote description:', err);
+                    });
+                }
+            }
+            
+            // Check legacy URL-based approach
             const sdpData = extractSdpFromUrl();
             if (sdpData && sdpData.type === 'answer' && connection) {
                 connection.setRemoteDescription(sdpData.sdp).then(() => {
                     status.textContent = 'Connection established';
                     status.className = 'status connected';
+                    colorControls.style.display = 'block';
                 }).catch(err => {
                     console.error('Error setting remote description:', err);
                 });

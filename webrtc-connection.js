@@ -240,7 +240,14 @@ class WebRTCConnection {
 }
 
 /**
- * Encode SDP to base64 for QR code/URL sharing
+ * Generate a short session ID (6 characters)
+ */
+function generateSessionId() {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+}
+
+/**
+ * Encode SDP to base64 for storage/sharing
  */
 function encodeSdp(sdp) {
     return btoa(JSON.stringify(sdp));
@@ -259,26 +266,60 @@ function decodeSdp(encoded) {
 }
 
 /**
- * Generate shareable URL with encoded SDP
+ * Store SDP in sessionStorage with session ID
  */
-function generateShareableUrl(sdp, baseUrl = window.location.origin) {
-    const encoded = encodeSdp(sdp);
+function storeSdp(sessionId, sdp, type) {
+    const key = `sdp_${sessionId}_${type}`;
+    sessionStorage.setItem(key, encodeSdp(sdp));
+    // Also store timestamp to clean up old entries
+    sessionStorage.setItem(`${key}_time`, Date.now().toString());
+}
+
+/**
+ * Retrieve SDP from sessionStorage
+ */
+function retrieveSdp(sessionId, type) {
+    const key = `sdp_${sessionId}_${type}`;
+    const encoded = sessionStorage.getItem(key);
+    if (encoded) {
+        return decodeSdp(encoded);
+    }
+    return null;
+}
+
+/**
+ * Generate shareable URL with short session ID
+ */
+function generateShareableUrl(sessionId, baseUrl = window.location.origin) {
     // Use the phone page for offer, iPad page for answer
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-    return `${baseUrl}/${targetPage}?offer=${encoded}`;
+    return `${baseUrl}/${targetPage}?session=${sessionId}`;
 }
 
 /**
  * Generate shareable URL for answer
  */
-function generateAnswerUrl(answer, baseUrl = window.location.origin) {
-    const encoded = encodeSdp(answer);
-    return `${baseUrl}/phone.html?answer=${encoded}`;
+function generateAnswerUrl(sessionId, baseUrl = window.location.origin) {
+    return `${baseUrl}/phone.html?session=${sessionId}&type=answer`;
 }
 
 /**
- * Extract SDP from URL parameters
+ * Extract session info from URL parameters
+ */
+function extractSessionFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session');
+    const type = params.get('type') || 'offer'; // default to offer if not specified
+    
+    if (sessionId) {
+        return { sessionId, type };
+    }
+    return null;
+}
+
+/**
+ * Extract SDP from URL parameters (legacy support)
  */
 function extractSdpFromUrl() {
     const params = new URLSearchParams(window.location.search);

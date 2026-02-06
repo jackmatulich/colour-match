@@ -225,8 +225,10 @@
         const connectionSection = document.getElementById('connectionSection');
         const connectedSection = document.getElementById('connectedSection');
         const answerSection = document.getElementById('answerSection');
-        const answerUrlDisplay = document.getElementById('answerUrlDisplay');
+        const answerSessionIdDisplay = document.getElementById('answerSessionIdDisplay');
+        const answerSdpDisplay = document.getElementById('answerSdpDisplay');
         const copyAnswerBtn = document.getElementById('copyAnswerBtn');
+        const copyAnswerSdpBtn = document.getElementById('copyAnswerSdpBtn');
         const matchBtn = document.getElementById('matchBtn');
         const noMatchBtn = document.getElementById('noMatchBtn');
         let isInitiator = false;
@@ -282,9 +284,13 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate QR code with offer
-                const shareableUrl = generateShareableUrl(offer);
-                displayAnswerUrl(shareableUrl); // Reuse this function to show the offer URL
+                // Generate short session ID and store SDP
+                const sessionId = generateSessionId();
+                storeSdp(sessionId, offer, 'offer');
+                
+                // Generate short URL with session ID
+                const shareableUrl = generateShareableUrl(sessionId);
+                displayAnswerUrl(shareableUrl, sessionId, offer);
                 answerSection.classList.add('active');
                 
                 // Check if answer is in URL
@@ -297,8 +303,25 @@
             }
         });
 
-        // Check for answer in URL parameters
+        // Check for answer in URL parameters or session storage
         function checkForAnswer() {
+            // Check new session-based approach
+            const sessionInfo = extractSessionFromUrl();
+            if (sessionInfo && sessionInfo.type === 'answer' && connection) {
+                const answer = retrieveSdp(sessionInfo.sessionId, 'answer');
+                if (answer) {
+                    connection.setRemoteDescription(answer).then(() => {
+                        status.textContent = 'Connection established';
+                        status.className = 'status connected';
+                        answerSection.classList.remove('active');
+                        connectedSection.classList.add('active');
+                    }).catch(err => {
+                        console.error('Error setting remote description:', err);
+                    });
+                }
+            }
+            
+            // Check legacy URL-based approach
             const sdpData = extractSdpFromUrl();
             if (sdpData && sdpData.type === 'answer' && connection) {
                 connection.setRemoteDescription(sdpData.sdp).then(() => {
@@ -325,32 +348,48 @@
                 status.textContent = 'Connecting...';
                 status.className = 'status';
 
-                // Extract offer from URL
-                let sdpData = extractSdpFromUrl();
+                // Extract offer from URL (new session-based or legacy)
                 let offer = null;
+                const sessionInfo = extractSessionFromUrl();
                 
-                if (sdpData && sdpData.type === 'offer') {
-                    offer = sdpData.sdp;
-                } else {
-                    // Try to parse URL directly
-                    try {
-                        const urlObj = new URL(url);
-                        const offerParam = urlObj.searchParams.get('offer');
-                        if (offerParam) {
-                            offer = decodeSdp(offerParam);
-                        } else {
-                            // Try parsing as base64 directly
-                            offer = decodeSdp(url);
-                        }
-                    } catch (e) {
-                        alert('Invalid connection URL. Please check and try again.');
+                if (sessionInfo && sessionInfo.type === 'offer') {
+                    // New session-based approach
+                    offer = retrieveSdp(sessionInfo.sessionId, 'offer');
+                    if (!offer) {
+                        alert('Session not found. Please check the URL or enter SDP manually.');
                         connectBtn.disabled = false;
                         return;
+                    }
+                } else {
+                    // Legacy URL-based approach
+                    const sdpData = extractSdpFromUrl();
+                    if (sdpData && sdpData.type === 'offer') {
+                        offer = sdpData.sdp;
+                    } else {
+                        // Try parsing as direct SDP or session ID
+                        try {
+                            const urlObj = new URL(url);
+                            const offerParam = urlObj.searchParams.get('offer');
+                            if (offerParam) {
+                                offer = decodeSdp(offerParam);
+                            } else {
+                                // Maybe it's a session ID (6 chars) or direct SDP
+                                if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
+                                    offer = retrieveSdp(url, 'offer');
+                                } else {
+                                    offer = decodeSdp(url);
+                                }
+                            }
+                        } catch (e) {
+                            alert('Invalid connection URL. Please check and try again.');
+                            connectBtn.disabled = false;
+                            return;
+                        }
                     }
                 }
 
                 if (!offer) {
-                    alert('Could not extract offer from URL');
+                    alert('Could not extract offer. Please check the URL.');
                     connectBtn.disabled = false;
                     return;
                 }
@@ -386,11 +425,13 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Generate answer URL for other device to use
-                const answerUrl = generateAnswerUrl(answer);
+                // Store answer with same session ID if available, or generate new one
+                let answerSessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
+                storeSdp(answerSessionId, answer, 'answer');
                 
-                // Display answer URL and QR code
-                displayAnswerUrl(answerUrl);
+                // Generate short answer URL
+                const answerUrl = generateAnswerUrl(answerSessionId);
+                displayAnswerUrl(answerUrl, answerSessionId, answer);
                 
                 // Connection will complete once other device sets the answer
 
@@ -470,12 +511,11 @@
             sendFeedback(false);
         });
 
-        // Display answer URL
-        function displayAnswerUrl(url) {
-            answerUrlDisplay.value = url;
+        // Display answer URL (or offer URL when starting session)
+        function displayAnswerUrl(url, sessionId, sdp) {
             answerSection.classList.add('active');
             
-            // Generate QR code
+            // Generate QR code (now with short URL!)
             if (window.QRCode) {
                 const qrContainer = document.getElementById('answerQrCode');
                 qrContainer.innerHTML = '';
@@ -486,11 +526,29 @@
                 });
             }
 
+            // Show session ID
+            if (answerSessionIdDisplay && sessionId) {
+                answerSessionIdDisplay.value = sessionId;
+            }
+            
+            // Show SDP for manual copy
+            if (answerSdpDisplay && sdp) {
+                answerSdpDisplay.value = encodeSdp(sdp);
+            }
+
             copyAnswerBtn.onclick = () => {
                 navigator.clipboard.writeText(url).then(() => {
-                    alert('Answer URL copied to clipboard!');
+                    alert('URL copied to clipboard!');
                 });
             };
+            
+            if (copyAnswerSdpBtn && sdp) {
+                copyAnswerSdpBtn.onclick = () => {
+                    navigator.clipboard.writeText(encodeSdp(sdp)).then(() => {
+                        alert('SDP copied to clipboard!');
+                    });
+                };
+            }
         }
 
         // Allow Enter key to connect
