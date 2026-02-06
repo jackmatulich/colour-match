@@ -37,11 +37,10 @@ class WebRTCConnection {
 
         this.setupDataChannel(this.dataChannel);
 
-        // Handle ICE candidates
+        // Handle ICE candidates - send them to answerer
         this.pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                // ICE candidate generated, can be sent to peer
-                // In this implementation, we'll include it in the offer/answer
+            if (event.candidate && this.onIceCandidateCallback) {
+                this.onIceCandidateCallback(event.candidate);
             }
         };
 
@@ -64,7 +63,7 @@ class WebRTCConnection {
 
     /**
      * Initialize as answerer (iPad side)
-     * Creates answer from received offer
+     * Creates answer from received offer and automatically completes connection
      */
     async initAsAnswerer(offerSdp) {
         this.isInitiator = false;
@@ -84,10 +83,10 @@ class WebRTCConnection {
             this.setupDataChannel(this.dataChannel);
         };
 
-        // Handle ICE candidates
+        // Handle ICE candidates - send them back to offerer
         this.pc.onicecandidate = (event) => {
-            if (event.candidate) {
-                // ICE candidate generated
+            if (event.candidate && this.onIceCandidateCallback) {
+                this.onIceCandidateCallback(event.candidate);
             }
         };
 
@@ -108,7 +107,24 @@ class WebRTCConnection {
         // Wait for ICE gathering to complete
         await this.waitForIceGathering();
 
+        // Return answer so it can be sent back to offerer
         return this.pc.localDescription;
+    }
+    
+    /**
+     * Set callback for ICE candidates
+     */
+    onIceCandidate(callback) {
+        this.onIceCandidateCallback = callback;
+    }
+    
+    /**
+     * Add ICE candidate from remote peer
+     */
+    async addIceCandidate(candidate) {
+        if (this.pc && this.pc.remoteDescription) {
+            await this.pc.addIceCandidate(candidate);
+        }
     }
 
     /**

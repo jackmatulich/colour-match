@@ -257,9 +257,6 @@
         const testColorSwatch = document.getElementById('testColorSwatch');
         const testColorInfo = document.getElementById('testColorInfo');
         const copyUrlBtn = document.getElementById('copyUrlBtn');
-        const sessionIdDisplay = document.getElementById('sessionIdDisplay');
-        const sdpInput = document.getElementById('sdpInput');
-        const submitSdpBtn = document.getElementById('submitSdpBtn');
         const modeSelection = document.getElementById('modeSelection');
         const startSessionBtn = document.getElementById('startSessionBtn');
         const joinSessionBtn = document.getElementById('joinSessionBtn');
@@ -390,6 +387,15 @@
                 connection.onMessage((data) => {
                     handleMessage(data);
                 });
+                
+                // Handle ICE candidates from answerer
+                connection.onIceCandidate((candidate) => {
+                    if (connection && connection.pc) {
+                        connection.pc.addIceCandidate(candidate).catch(err => {
+                            console.error('Error adding ICE candidate:', err);
+                        });
+                    }
+                });
 
                 const offer = await connection.initAsOfferer();
                 
@@ -401,8 +407,8 @@
                 const shareableUrl = generateShareableUrl(sessionId);
                 displayQRCode(shareableUrl, sessionId, offer);
 
-                // Check if answer is in URL
-                checkForAnswer();
+                // Listen for answer via data channel or polling
+                startWaitingForAnswer(sessionId);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);
@@ -530,46 +536,6 @@
             }
         });
 
-        // Display answer URL (when joining)
-        function displayAnswerUrl(url, sessionId, answer) {
-            qrContainer.style.display = 'block';
-            
-            // Show QR code for answer (short URL now!)
-            if (qrCode) {
-                qrCode.clear();
-            }
-            qrCode = new QRCode(document.getElementById('qrcode'), {
-                text: url,
-                width: 200,
-                height: 200
-            });
-
-            // Show session ID
-            if (sessionIdDisplay && sessionId) {
-                sessionIdDisplay.value = sessionId;
-            }
-            
-            // Show SDP for manual copy
-            if (sdpInput) {
-                sdpInput.value = encodeSdp(answer);
-            }
-
-            copyUrlBtn.onclick = () => {
-                navigator.clipboard.writeText(url).then(() => {
-                    alert('Answer URL copied to clipboard!');
-                });
-            };
-            
-            // Add copy SDP button
-            const copySdpBtn = document.getElementById('copySdpBtn');
-            if (copySdpBtn) {
-                copySdpBtn.onclick = () => {
-                    navigator.clipboard.writeText(encodeSdp(answer)).then(() => {
-                        alert('Answer SDP copied! Share this with the other device.');
-                    });
-                };
-            }
-        }
 
         // Display QR code with short URL and manual SDP option
         function displayQRCode(url, sessionId, sdp) {

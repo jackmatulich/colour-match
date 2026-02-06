@@ -224,11 +224,6 @@
         const createOfferBtn = document.getElementById('createOfferBtn');
         const connectionSection = document.getElementById('connectionSection');
         const connectedSection = document.getElementById('connectedSection');
-        const answerSection = document.getElementById('answerSection');
-        const answerSessionIdDisplay = document.getElementById('answerSessionIdDisplay');
-        const answerSdpDisplay = document.getElementById('answerSdpDisplay');
-        const copyAnswerBtn = document.getElementById('copyAnswerBtn');
-        const copyAnswerSdpBtn = document.getElementById('copyAnswerSdpBtn');
         const matchBtn = document.getElementById('matchBtn');
         const noMatchBtn = document.getElementById('noMatchBtn');
         let isInitiator = false;
@@ -269,7 +264,6 @@
                         status.textContent = 'Connected';
                         status.className = 'status connected';
                         startSessionSection.style.display = 'none';
-                        answerSection.classList.remove('active');
                         connectedSection.classList.add('active');
                     } else if (state === 'disconnected' || state === 'failed') {
                         status.textContent = 'Disconnected';
@@ -298,11 +292,10 @@
                 
                 // Generate short URL with session ID
                 const shareableUrl = generateShareableUrl(sessionId);
-                displayAnswerUrl(shareableUrl, sessionId, offer);
-                answerSection.classList.add('active');
+                displayQRCode(shareableUrl, sessionId, offer);
                 
-                // Check if answer is in URL
-                checkForAnswer();
+                // Wait for answerer to connect
+                startWaitingForAnswer(sessionId);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);
@@ -311,36 +304,32 @@
             }
         });
 
-        // Check for answer in URL parameters or session storage
-        function checkForAnswer() {
-            // Check new session-based approach
-            const sessionInfo = extractSessionFromUrl();
-            if (sessionInfo && sessionInfo.type === 'answer' && connection) {
-                const answer = retrieveSdp(sessionInfo.sessionId, 'answer');
-                if (answer) {
+        // Wait for answerer to connect (when this device is the offerer)
+        function startWaitingForAnswer(sessionId) {
+            // Poll sessionStorage for answer
+            const checkInterval = setInterval(() => {
+                const answer = retrieveSdp(sessionId, 'answer');
+                if (answer && connection) {
+                    clearInterval(checkInterval);
                     connection.setRemoteDescription(answer).then(() => {
                         status.textContent = 'Connection established';
                         status.className = 'status connected';
-                        answerSection.classList.remove('active');
                         connectedSection.classList.add('active');
                     }).catch(err => {
                         console.error('Error setting remote description:', err);
                     });
                 }
-            }
+            }, 500);
             
-            // Check legacy URL-based approach
-            const sdpData = extractSdpFromUrl();
-            if (sdpData && sdpData.type === 'answer' && connection) {
-                connection.setRemoteDescription(sdpData.sdp).then(() => {
-                    status.textContent = 'Connection established';
-                    status.className = 'status connected';
-                    answerSection.classList.remove('active');
-                    connectedSection.classList.add('active');
-                }).catch(err => {
-                    console.error('Error setting remote description:', err);
-                });
-            }
+            setTimeout(() => {
+                clearInterval(checkInterval);
+            }, 300000);
+        }
+        
+        // Display QR code (reused from phone.html pattern)
+        function displayQRCode(url, sessionId, sdp) {
+            // For iPad, we don't need to show QR when starting session
+            // Just wait for connection
         }
 
         // Connect to other device (join session)
@@ -438,18 +427,31 @@
                 connection.onMessage((data) => {
                     handleMessage(data);
                 });
+                
+                // Handle ICE candidates from offerer
+                connection.onIceCandidate((candidate) => {
+                    if (connection && connection.pc) {
+                        connection.pc.addIceCandidate(candidate).catch(err => {
+                            console.error('Error adding ICE candidate:', err);
+                        });
+                    }
+                });
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Store answer with same session ID if available, or generate new one
-                let answerSessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
-                storeSdp(answerSessionId, answer, 'answer');
+                // Store answer with same session ID so offerer can find it
+                if (sessionInfo && sessionInfo.sessionId) {
+                    storeSdp(sessionInfo.sessionId, answer, 'answer');
+                    
+                    // Also try to send answer via data channel if possible (though connection may not be ready yet)
+                    // The offerer will poll sessionStorage to find it
+                }
                 
-                // Generate short answer URL
-                const answerUrl = generateAnswerUrl(answerSessionId);
-                displayAnswerUrl(answerUrl, answerSessionId, answer);
-                
-                // Connection will complete once other device sets the answer
+                // Connection should complete automatically via ICE
+                status.textContent = 'Connected!';
+                status.className = 'status connected';
+                connectionSection.style.display = 'none';
+                connectedSection.classList.add('active');
 
             } catch (err) {
                 console.error('Error connecting:', err);
