@@ -579,69 +579,26 @@
                 qrCode.clear();
             }
             
-            // QR code with short URL (much shorter now!)
-            qrCode = new QRCode(document.getElementById('qrcode'), {
-                text: url,
-                width: 200,
-                height: 200
-            });
-
-            // Also show session ID and SDP for manual copy
-            const sdpText = encodeSdp(sdp);
-            const sdpDisplay = document.getElementById('sdpDisplay');
-            if (sdpDisplay) {
-                sdpDisplay.value = sdpText;
+            // QR code with encoded SDP URL - larger size and high error correction for readability
+            const qrElement = document.getElementById('qrcode');
+            if (qrElement && window.QRCode) {
+                qrCode = new QRCode(qrElement, {
+                    text: url,
+                    width: 300,
+                    height: 300,
+                    errorCorrectionLevel: 'H', // Highest error correction for longer URLs
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
             }
 
-            copyUrlBtn.onclick = () => {
-                navigator.clipboard.writeText(url).then(() => {
-                    alert('URL copied to clipboard!');
-                });
-            };
-            
-            // Add copy SDP button functionality
-            const copySdpBtn = document.getElementById('copySdpBtn');
-            if (copySdpBtn) {
-                copySdpBtn.onclick = () => {
-                    navigator.clipboard.writeText(sdpText).then(() => {
-                        alert('SDP copied to clipboard! Share this with the other device.');
+            if (copyUrlBtn) {
+                copyUrlBtn.onclick = () => {
+                    navigator.clipboard.writeText(url).then(() => {
+                        alert('URL copied to clipboard!');
                     });
                 };
-            }
-
-            // Handle SDP submission (for answer when joining, or when receiving answer)
-            if (submitSdpBtn) {
-                submitSdpBtn.onclick = () => {
-                    const sdpText = sdpInput.value.trim();
-                    if (!sdpText) {
-                        alert('Please paste the SDP');
-                        return;
-                    }
-
-                    try {
-                        const sdp = decodeSdp(sdpText);
-                        if (sdp && connection) {
-                            connection.setRemoteDescription(sdp).then(() => {
-                                status.textContent = 'Connection established';
-                                status.className = 'status connected';
-                                colorControls.style.display = 'block';
-                                qrContainer.style.display = 'none';
-                            }).catch(err => {
-                                console.error('Error setting remote description:', err);
-                                alert('Failed to establish connection: ' + err.message);
-                            });
-                        } else {
-                            alert('Invalid SDP format');
-                        }
-                    } catch (e) {
-                        alert('Error parsing SDP: ' + e.message);
-                    }
-                };
-            }
-            
-            // Update session ID display
-            if (sessionIdDisplay && sessionId) {
-                sessionIdDisplay.value = sessionId;
             }
         }
 
