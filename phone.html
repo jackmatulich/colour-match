@@ -575,19 +575,56 @@
                 
                 // Store answer on dweet.io for signaling
                 await storeSdpOnDweet(sessionId, answer, 'answer');
+                console.log('Answer stored on dweet.io');
                 
                 // Set up ICE candidate handler to store on dweet.io
+                let lastIceTimestamp = 0;
                 connection.onIceCandidate(async (candidate) => {
                     if (candidate) {
-                        await storeIceCandidateOnDweet(sessionId, candidate, false);
+                        const now = Date.now();
+                        // Only store if it's been at least 500ms since last one
+                        if (now - lastIceTimestamp > 500) {
+                            await storeIceCandidateOnDweet(sessionId, candidate, false);
+                            lastIceTimestamp = now;
+                        }
                     }
                 });
                 
-                // Get ICE candidates from offerer
-                const iceCandidate = await retrieveIceCandidatesFromDweet(sessionId, false);
-                if (iceCandidate && connection.pc) {
-                    await connection.pc.addIceCandidate(iceCandidate);
-                }
+                // Continuously poll for ICE candidates from offerer
+                let lastOffererIceTimestamp = 0;
+                const icePollInterval = setInterval(async () => {
+                    if (!connection || !connection.pc) {
+                        clearInterval(icePollInterval);
+                        return;
+                    }
+                    
+                    const iceCandidate = await retrieveIceCandidatesFromDweet(sessionId, false);
+                    if (iceCandidate && iceCandidate.candidate) {
+                        const candidateTimestamp = iceCandidate.timestamp || 0;
+                        if (candidateTimestamp > lastOffererIceTimestamp) {
+                            lastOffererIceTimestamp = candidateTimestamp;
+                            try {
+                                await connection.pc.addIceCandidate(new RTCIceCandidate(iceCandidate.candidate || iceCandidate));
+                                console.log('Added ICE candidate from offerer');
+                            } catch (err) {
+                                // Candidate might already be added, that's ok
+                                if (err.name !== 'OperationError') {
+                                    console.error('Error adding ICE candidate:', err);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Update status based on connection state
+                    if (connection.pc.connectionState === 'connected') {
+                        clearInterval(icePollInterval);
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    }
+                }, 1000);
+                
+                setTimeout(() => clearInterval(icePollInterval), 300000);
                 
                 // Generate answer URL and show QR code
                 const urlData = generateAnswerUrl(answer, sessionId);
