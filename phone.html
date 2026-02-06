@@ -476,11 +476,7 @@
                     // New session-based approach
                     offer = retrieveSdp(sessionInfo.sessionId, 'offer');
                     if (!offer) {
-                        alert('Session not found. Please check the URL or enter SDP manually.');
-                        // Show SDP input for manual entry
-                        if (sdpInput) {
-                            sdpInput.style.display = 'block';
-                        }
+                        alert('Session not found. Please check the URL and try again.');
                         joinOfferBtn.disabled = false;
                         return;
                     }
@@ -514,11 +510,7 @@
                 }
 
                 if (!offer) {
-                    alert('Could not extract offer. Please enter the SDP manually in the text area below.');
-                    if (sdpInput) {
-                        sdpInput.style.display = 'block';
-                        sdpInput.focus();
-                    }
+                    alert('Could not extract offer. Please check the URL and try again.');
                     joinOfferBtn.disabled = false;
                     return;
                 }
