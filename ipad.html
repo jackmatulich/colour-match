@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Matcher - iPad</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #colorDisplay {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: background-color 0.3s ease;
+        }
+
+        #colorInfo {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #colorInfo h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        #colorInfo p {
+            font-size: 18px;
+            margin: 5px 0;
+        }
+
+        #controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.9);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .status {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .status.connected {
+            background: rgba(0, 255, 0, 0.2);
+        }
+
+        .status.disconnected {
+            background: rgba(255, 0, 0, 0.2);
+        }
+
+        .connection-section {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #555;
+            border-radius: 8px;
+            background: #222;
+            color: #fff;
+            width: 100%;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        button.success {
+            background: #34C759;
+        }
+
+        button.danger {
+            background: #FF3B30;
+        }
+
+        .feedback-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .feedback-buttons button {
+            flex: 1;
+        }
+
+        #connectionSection {
+            display: block;
+        }
+
+        #connectedSection {
+            display: none;
+        }
+
+        #connectedSection.active {
+            display: block;
+        }
+
+        #answerSection {
+            display: none;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        #answerSection.active {
+            display: block;
+        }
+
+        #answerQrCode {
+            margin: 10px auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="colorDisplay">
+        <div id="colorInfo">
+            <h2>Waiting for connection...</h2>
+            <p>Connect to phone to start receiving colors</p>
+        </div>
+    </div>
+
+    <div id="controls">
+        <div class="status" id="status">Not connected</div>
+
+        <div id="connectionSection">
+            <div class="connection-section">
+                <input type="text" id="offerInput" placeholder="Paste connection URL or scan QR code">
+                <button id="connectBtn">Connect</button>
+            </div>
+        </div>
+
+        <div id="answerSection">
+            <div>Share this answer URL with the phone:</div>
+            <div id="answerQrCode"></div>
+            <input type="text" id="answerUrlDisplay" readonly style="width: 100%; padding: 8px; margin: 10px 0; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 12px;">
+            <button id="copyAnswerBtn" class="secondary">Copy Answer URL</button>
+        </div>
+
+        <div id="connectedSection">
+            <div class="feedback-buttons">
+                <button id="matchBtn" class="success" disabled>✓ Match</button>
+                <button id="noMatchBtn" class="danger" disabled>✗ No Match</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="color-matcher.js"></script>
+    <script src="webrtc-connection.js"></script>
+    <script>
+        // Global state
+        let connection = null;
+        let currentColor = null;
+
+        // UI elements
+        const colorDisplay = document.getElementById('colorDisplay');
+        const colorInfo = document.getElementById('colorInfo');
+        const status = document.getElementById('status');
+        const offerInput = document.getElementById('offerInput');
+        const connectBtn = document.getElementById('connectBtn');
+        const connectionSection = document.getElementById('connectionSection');
+        const connectedSection = document.getElementById('connectedSection');
+        const answerSection = document.getElementById('answerSection');
+        const answerUrlDisplay = document.getElementById('answerUrlDisplay');
+        const copyAnswerBtn = document.getElementById('copyAnswerBtn');
+        const matchBtn = document.getElementById('matchBtn');
+        const noMatchBtn = document.getElementById('noMatchBtn');
+
+        // Connect to phone
+        connectBtn.addEventListener('click', async () => {
+            try {
+                const url = offerInput.value.trim();
+                if (!url) {
+                    alert('Please enter a connection URL');
+                    return;
+                }
+
+                connectBtn.disabled = true;
+                status.textContent = 'Connecting...';
+                status.className = 'status';
+
+                // Extract offer from URL
+                let sdpData = extractSdpFromUrl();
+                let offer = null;
+                
+                if (sdpData && sdpData.type === 'offer') {
+                    offer = sdpData.sdp;
+                } else {
+                    // Try to parse URL directly
+                    try {
+                        const urlObj = new URL(url);
+                        const offerParam = urlObj.searchParams.get('offer');
+                        if (offerParam) {
+                            offer = decodeSdp(offerParam);
+                        } else {
+                            // Try parsing as base64 directly
+                            offer = decodeSdp(url);
+                        }
+                    } catch (e) {
+                        alert('Invalid connection URL. Please check and try again.');
+                        connectBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                if (!offer) {
+                    alert('Could not extract offer from URL');
+                    connectBtn.disabled = false;
+                    return;
+                }
+
+                connection = new WebRTCConnection();
+
+                connection.onConnectionStateChange((state) => {
+                    console.log('Connection state:', state);
+                    if (state === 'connected') {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        connectionSection.style.display = 'none';
+                        answerSection.classList.remove('active');
+                        connectedSection.classList.add('active');
+                    } else if (state === 'disconnected' || state === 'failed') {
+                        status.textContent = 'Disconnected';
+                        status.className = 'status disconnected';
+                    }
+                });
+
+                connection.onDataChannelStateChange((isOpen) => {
+                    if (isOpen) {
+                        status.textContent = 'Connected';
+                        status.className = 'status connected';
+                        matchBtn.disabled = false;
+                        noMatchBtn.disabled = false;
+                    }
+                });
+
+                connection.onMessage((data) => {
+                    handleMessage(data);
+                });
+
+                const answer = await connection.initAsAnswerer(offer);
+                
+                // Generate answer URL for phone to use
+                const answerUrl = generateAnswerUrl(answer);
+                
+                // Display answer URL and QR code
+                displayAnswerUrl(answerUrl);
+                
+                // Also try to complete connection (though phone needs to set this)
+                // The connection will complete once phone sets the answer
+
+            } catch (err) {
+                console.error('Error connecting:', err);
+                alert('Failed to connect: ' + err.message);
+                connectBtn.disabled = false;
+            }
+        });
+
+        // Handle incoming messages
+        function handleMessage(data) {
+            if (data.type === 'color') {
+                currentColor = data;
+                displayColor(data);
+            }
+        }
+
+        // Display color on screen
+        function displayColor(colorData) {
+            const rgb = colorData.rgb;
+            // Use rgbToHex function if available, otherwise construct manually
+            let hex;
+            if (typeof rgbToHex === 'function') {
+                hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+            } else {
+                hex = `#${rgb.r.toString(16).padStart(2, '0')}${rgb.g.toString(16).padStart(2, '0')}${rgb.b.toString(16).padStart(2, '0')}`.toUpperCase();
+            }
+            
+            colorDisplay.style.backgroundColor = hex;
+
+            let infoText = '';
+            if (colorData.mode === 'rgb') {
+                infoText = `
+                    <h2>RGB Color</h2>
+                    <p><strong>RGB:</strong> ${rgb.r}, ${rgb.g}, ${rgb.b}</p>
+                    <p><strong>Hex:</strong> ${hex}</p>
+                `;
+            } else {
+                const cmyk = colorData.cmyk;
+                infoText = `
+                    <h2>CMYK Color</h2>
+                    <p><strong>CMYK:</strong> ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%</p>
+                    <p><strong>RGB:</strong> ${rgb.r}, ${rgb.g}, ${rgb.b}</p>
+                `;
+            }
+
+            colorInfo.innerHTML = infoText;
+        }
+
+        // Send feedback
+        function sendFeedback(isMatch) {
+            if (connection && connection.isReady() && currentColor) {
+                connection.sendMessage({
+                    type: 'feedback',
+                    isMatch: isMatch,
+                    color: currentColor
+                });
+            }
+        }
+
+        matchBtn.addEventListener('click', () => {
+            sendFeedback(true);
+        });
+
+        noMatchBtn.addEventListener('click', () => {
+            sendFeedback(false);
+        });
+
+        // Display answer URL
+        function displayAnswerUrl(url) {
+            answerUrlDisplay.value = url;
+            answerSection.classList.add('active');
+            
+            // Generate QR code
+            if (window.QRCode) {
+                const qrContainer = document.getElementById('answerQrCode');
+                qrContainer.innerHTML = '';
+                new QRCode(qrContainer, {
+                    text: url,
+                    width: 200,
+                    height: 200
+                });
+            }
+
+            copyAnswerBtn.onclick = () => {
+                navigator.clipboard.writeText(url).then(() => {
+                    alert('Answer URL copied to clipboard!');
+                });
+            };
+        }
+
+        // Allow Enter key to connect
+        offerInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                connectBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>
