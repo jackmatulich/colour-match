@@ -446,11 +446,15 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Generate answer URL with encoded answer
-                const answerUrl = generateAnswerUrl(answer);
-                displayAnswerUrl(answerUrl, null, answer);
+                // Get session ID from URL
+                const sessionInfo = extractSessionFromUrl();
+                const sessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
                 
-                // Connection completes when other device loads the answer URL
+                // Generate short answer URL with session ID
+                const urlData = generateAnswerUrl(answer, sessionId);
+                displayAnswerUrl(urlData.url, urlData.sessionId, answer);
+                
+                // Connection completes when other device loads answer URL or polls sessionStorage
 
             } catch (err) {
                 console.error('Error connecting:', err);
@@ -532,16 +536,19 @@
         function displayAnswerUrl(url, sessionId, sdp) {
             answerSection.classList.add('active');
             
-            // Generate QR code
+            // Generate QR code with high error correction
             if (window.QRCode) {
                 const qrContainer = document.getElementById('answerQrCode');
                 if (qrContainer) {
                     qrContainer.innerHTML = '';
                     new QRCode(qrContainer, {
                         text: url,
-                        width: 200,
-                        height: 200,
-                        errorCorrectionLevel: 'M'
+                        width: 250,
+                        height: 250,
+                        errorCorrectionLevel: 'H',
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.H
                     });
                 }
             }
@@ -552,6 +559,17 @@
                         alert('Answer URL copied! Share this with the other device.');
                     });
                 };
+            }
+            
+            // Show session ID
+            if (sessionId) {
+                const sessionDisplay = document.createElement('div');
+                sessionDisplay.style.cssText = 'margin-top: 10px; font-size: 12px; color: #aaa;';
+                sessionDisplay.textContent = `Session ID: ${sessionId}`;
+                const qrContainer = document.getElementById('answerQrCode');
+                if (qrContainer && qrContainer.parentElement) {
+                    qrContainer.parentElement.appendChild(sessionDisplay);
+                }
             }
         }
 

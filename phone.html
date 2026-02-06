@@ -404,17 +404,48 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate URL with encoded offer (direct approach - works across devices)
-                const shareableUrl = generateShareableUrl(offer);
-                displayQRCode(shareableUrl, null, offer);
+                // Generate short URL with session ID (SDP stored locally)
+                const urlData = generateShareableUrl(offer);
+                displayQRCode(urlData.url, urlData.sessionId, offer);
                 
-                // Also store in sessionStorage as backup
-                const sessionId = generateSessionId();
-                storeSdp(sessionId, offer, 'offer');
+                // Wait for answer - poll for answer URL or check sessionStorage
+                const checkInterval = setInterval(() => {
+                    if (!connection) {
+                        clearInterval(checkInterval);
+                        return;
+                    }
+                    
+                    // Check URL params for answer
+                    const sdpData = extractSdpFromUrl();
+                    if (sdpData && sdpData.type === 'answer') {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(sdpData.sdp).then(() => {
+                            status.textContent = 'Connection established';
+                            status.className = 'status connected';
+                            colorControls.style.display = 'block';
+                            qrContainer.style.display = 'none';
+                        }).catch(err => {
+                            console.error('Error setting remote description:', err);
+                        });
+                        return;
+                    }
+                    
+                    // Also check sessionStorage (if same device/tab)
+                    const answer = retrieveSdp(urlData.sessionId, 'answer');
+                    if (answer) {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(answer).then(() => {
+                            status.textContent = 'Connection established';
+                            status.className = 'status connected';
+                            colorControls.style.display = 'block';
+                            qrContainer.style.display = 'none';
+                        }).catch(err => {
+                            console.error('Error setting remote description:', err);
+                        });
+                    }
+                }, 1000);
                 
-                // Wait for answer - check URL params (when user comes back with answer URL)
-                // and also listen for answer via message
-                checkForAnswerPeriodically();
+                setTimeout(() => clearInterval(checkInterval), 300000);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);

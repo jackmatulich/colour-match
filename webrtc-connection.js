@@ -304,8 +304,8 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Generate shareable URL with encoded SDP (for QR code)
- * Uses data URL approach to keep it shorter, or direct encoding
+ * Generate shareable URL with short session ID
+ * SDP is stored in sessionStorage, URL only contains short ID
  */
 function generateShareableUrl(sdp, baseUrl = null) {
     // Get the full base URL including path
@@ -319,10 +319,13 @@ function generateShareableUrl(sdp, baseUrl = null) {
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     
-    // Encode SDP directly in URL (QR codes can handle longer strings with error correction)
-    const encoded = encodeSdp(sdp);
+    // Generate short session ID and store SDP locally
+    const sessionId = generateSessionId();
+    storeSdp(sessionId, sdp, 'offer');
+    
+    // URL only contains short session ID (much shorter!)
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return `${cleanBase}${targetPage}?offer=${encoded}`;
+    return { url: `${cleanBase}${targetPage}?session=${sessionId}`, sessionId: sessionId };
 }
 
 /**
