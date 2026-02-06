@@ -332,8 +332,8 @@
                         return;
                     }
                     
-                    // Check sessionStorage
-                    const answer = retrieveSdp(urlData.sessionId, 'answer');
+                    // Check sessionStorage (fallback for same device)
+                    const answer = urlData.sessionId ? retrieveSdp(urlData.sessionId, 'answer') : null;
                     if (answer) {
                         clearInterval(checkInterval);
                         connection.setRemoteDescription(answer).then(() => {
