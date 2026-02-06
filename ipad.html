@@ -308,14 +308,14 @@
                 }
                 answerSection.classList.add('active');
                 
-                // Wait for answer - check URL params and sessionStorage
-                const checkInterval = setInterval(() => {
+                // Wait for answer - poll dweet.io for answer
+                const checkInterval = setInterval(async () => {
                     if (!connection) {
                         clearInterval(checkInterval);
                         return;
                     }
                     
-                    // Check URL params
+                    // Check URL params for answer (legacy)
                     const sdpData = extractSdpFromUrl();
                     if (sdpData && sdpData.type === 'answer') {
                         clearInterval(checkInterval);
@@ -326,24 +326,28 @@
                             connectedSection.classList.add('active');
                         }).catch(err => {
                             console.error('Error setting remote description:', err);
+                            alert('Error establishing connection: ' + err.message);
                         });
                         return;
                     }
                     
-                    // Check sessionStorage (fallback for same device)
-                    const answer = urlData.sessionId ? retrieveSdp(urlData.sessionId, 'answer') : null;
-                    if (answer) {
-                        clearInterval(checkInterval);
-                        connection.setRemoteDescription(answer).then(() => {
-                            status.textContent = 'Connection established';
-                            status.className = 'status connected';
-                            answerSection.classList.remove('active');
-                            connectedSection.classList.add('active');
-                        }).catch(err => {
-                            console.error('Error setting remote description:', err);
-                        });
+                    // Check dweet.io for answer
+                    if (urlData && urlData.sessionId) {
+                        const answer = await retrieveSdpFromDweet(urlData.sessionId, 'answer');
+                        if (answer) {
+                            clearInterval(checkInterval);
+                            connection.setRemoteDescription(answer).then(() => {
+                                status.textContent = 'Connection established';
+                                status.className = 'status connected';
+                                answerSection.classList.remove('active');
+                                connectedSection.classList.add('active');
+                            }).catch(err => {
+                                console.error('Error setting remote description:', err);
+                                alert('Error establishing connection: ' + err.message);
+                            });
+                        }
                     }
-                }, 1000);
+                }, 2000); // Check every 2 seconds
                 
                 setTimeout(() => clearInterval(checkInterval), 300000);
                 
