@@ -11,6 +11,7 @@ class WebRTCConnection {
         this.onMessageCallback = null;
         this.onConnectionStateCallback = null;
         this.onDataChannelCallback = null;
+        this.onIceCandidateCallback = null;
     }
 
     /**
@@ -354,20 +355,27 @@ function generateShareableUrlWithSession(sessionId, baseUrl = null) {
 }
 
 /**
- * Generate shareable URL for answer
+ * Generate shareable URL for answer - uses compressed encoding
  */
-function generateAnswerUrl(sessionId, baseUrl = null) {
-    // Get the full base URL including path
+function generateAnswerUrl(answer, sessionId, baseUrl = null) {
     if (!baseUrl) {
-        // Get the directory path (everything except the filename)
         const pathname = window.location.pathname;
         const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
         baseUrl = window.location.origin + directory;
     }
     
-    // Ensure baseUrl ends with /
+    // Encode answer - use base64url encoding (no padding, URL-safe)
+    const encoded = encodeSdp(answer).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    
+    // Store answer locally with session ID for fallback
+    if (sessionId) {
+        storeSdp(sessionId, answer, 'answer');
+    }
+    
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return `${cleanBase}phone.html?session=${sessionId}&type=answer`;
+    const url = `${cleanBase}phone.html?answer=${encoded}`;
+    
+    return { url: url, sessionId: sessionId };
 }
 
 /**

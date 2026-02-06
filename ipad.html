@@ -194,10 +194,9 @@
             </div>
 
         <div id="answerSection">
-            <div>Share this answer URL with the phone:</div>
+            <div style="margin-bottom: 10px; font-weight: bold;">Scan this QR code or share the URL:</div>
             <div id="answerQrCode"></div>
-            <input type="text" id="answerUrlDisplay" readonly style="width: 100%; padding: 8px; margin: 10px 0; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px; font-size: 12px;">
-            <button id="copyAnswerBtn" class="secondary">Copy Answer URL</button>
+            <button id="copyAnswerBtn" class="secondary" style="margin-top: 10px;">Copy URL</button>
         </div>
 
         <div id="connectedSection">
@@ -299,12 +298,11 @@
                         qrContainer.innerHTML = '';
                         new QRCode(qrContainer, {
                             text: urlData.url,
-                            width: 250,
-                            height: 250,
-                            errorCorrectionLevel: 'H',
+                            width: 300,
+                            height: 300,
+                            correctLevel: 3,
                             colorDark: '#000000',
-                            colorLight: '#ffffff',
-                            correctLevel: QRCode.CorrectLevel.H
+                            colorLight: '#ffffff'
                         });
                     }
                 }
@@ -564,12 +562,11 @@
                     qrContainer.innerHTML = '';
                     new QRCode(qrContainer, {
                         text: url,
-                        width: 250,
-                        height: 250,
-                        errorCorrectionLevel: 'H',
+                        width: 300,
+                        height: 300,
+                        correctLevel: 3,
                         colorDark: '#000000',
-                        colorLight: '#ffffff',
-                        correctLevel: QRCode.CorrectLevel.H
+                        colorLight: '#ffffff'
                     });
                 }
             }

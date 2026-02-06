@@ -419,22 +419,9 @@
                             qrContainer.style.display = 'none';
                         }).catch(err => {
                             console.error('Error setting remote description:', err);
+                            alert('Error establishing connection: ' + err.message);
                         });
                         return;
-                    }
-                    
-                    // Also check sessionStorage (if same device/tab)
-                    const answer = retrieveSdp(urlData.sessionId, 'answer');
-                    if (answer) {
-                        clearInterval(checkInterval);
-                        connection.setRemoteDescription(answer).then(() => {
-                            status.textContent = 'Connection established';
-                            status.className = 'status connected';
-                            colorControls.style.display = 'block';
-                            qrContainer.style.display = 'none';
-                        }).catch(err => {
-                            console.error('Error setting remote description:', err);
-                        });
                     }
                 }, 1000);
                 
