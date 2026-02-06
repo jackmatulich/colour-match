@@ -500,7 +500,11 @@ async function retrieveIceCandidatesFromDweet(sessionId, isOfferer) {
         if (data.with && data.with.length > 0) {
             const dweet = data.with[0];
             if (dweet.content && dweet.content.candidate) {
-                return dweet.content.candidate;
+                // Return the full content including timestamp
+                return {
+                    candidate: dweet.content.candidate,
+                    timestamp: dweet.content.timestamp || dweet.created
+                };
             }
         }
         return null;
