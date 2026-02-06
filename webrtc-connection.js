@@ -304,12 +304,12 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Generate shareable URL with short session ID
+ * Generate shareable URL with encoded SDP (for QR code)
+ * Uses data URL approach to keep it shorter, or direct encoding
  */
-function generateShareableUrl(sessionId, baseUrl = null) {
+function generateShareableUrl(sdp, baseUrl = null) {
     // Get the full base URL including path
     if (!baseUrl) {
-        // Get the directory path (everything except the filename)
         const pathname = window.location.pathname;
         const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
         baseUrl = window.location.origin + directory;
@@ -319,7 +319,23 @@ function generateShareableUrl(sessionId, baseUrl = null) {
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     
-    // Ensure baseUrl ends with /
+    // Encode SDP directly in URL (QR codes can handle longer strings with error correction)
+    const encoded = encodeSdp(sdp);
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
+    return `${cleanBase}${targetPage}?offer=${encoded}`;
+}
+
+/**
+ * Generate shareable URL with short session ID (legacy, for sessionStorage approach)
+ */
+function generateShareableUrlWithSession(sessionId, baseUrl = null) {
+    if (!baseUrl) {
+        const pathname = window.location.pathname;
+        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        baseUrl = window.location.origin + directory;
+    }
+    const isPhone = window.location.pathname.includes('phone');
+    const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
     return `${cleanBase}${targetPage}?session=${sessionId}`;
 }

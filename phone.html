@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Color Matcher - Phone</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
@@ -18,8 +18,10 @@
             color: #fff;
             overflow: hidden;
             height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
             display: flex;
             flex-direction: column;
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         #videoContainer {
@@ -45,13 +47,16 @@
         }
 
         #controls {
-            background: rgba(0, 0, 0, 0.8);
+            background: rgba(0, 0, 0, 0.9);
             padding: 15px;
+            padding-bottom: calc(15px + env(safe-area-inset-bottom));
             display: flex;
             flex-direction: column;
             gap: 10px;
-            max-height: 40vh;
+            max-height: 50vh;
             overflow-y: auto;
+            position: relative;
+            z-index: 10;
         }
 
         .control-group {
@@ -399,34 +404,17 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate short session ID and store SDP
+                // Generate URL with encoded offer (direct approach - works across devices)
+                const shareableUrl = generateShareableUrl(offer);
+                displayQRCode(shareableUrl, null, offer);
+                
+                // Also store in sessionStorage as backup
                 const sessionId = generateSessionId();
                 storeSdp(sessionId, offer, 'offer');
                 
-                // Generate short URL with session ID
-                const shareableUrl = generateShareableUrl(sessionId);
-                displayQRCode(shareableUrl, sessionId, offer);
-
-                // Wait for answerer to connect and store answer
-                // Poll sessionStorage for answer
-                const checkInterval = setInterval(() => {
-                    const answer = retrieveSdp(sessionId, 'answer');
-                    if (answer && connection) {
-                        clearInterval(checkInterval);
-                        connection.setRemoteDescription(answer).then(() => {
-                            status.textContent = 'Connection established';
-                            status.className = 'status connected';
-                            colorControls.style.display = 'block';
-                        }).catch(err => {
-                            console.error('Error setting remote description:', err);
-                        });
-                    }
-                }, 500); // Check every 500ms
-                
-                // Stop polling after 5 minutes
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                }, 300000);
+                // Wait for answer - check URL params (when user comes back with answer URL)
+                // and also listen for answer via message
+                checkForAnswerPeriodically();
                 
             } catch (err) {
                 console.error('Error creating connection:', err);
@@ -539,13 +527,11 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Store answer with same session ID if available, or generate new one
-                let answerSessionId = sessionInfo ? sessionInfo.sessionId : generateSessionId();
-                storeSdp(answerSessionId, answer, 'answer');
+                // Generate answer URL with encoded answer (direct approach)
+                const answerUrl = generateAnswerUrl(answer);
+                displayAnswerUrl(answerUrl, null, answer);
                 
-                // Generate short answer URL
-                const answerUrl = generateAnswerUrl(answerSessionId);
-                displayAnswerUrl(answerUrl, answerSessionId, answer);
+                // Connection completes when other device loads the answer URL
                 
             } catch (err) {
                 console.error('Error connecting:', err);

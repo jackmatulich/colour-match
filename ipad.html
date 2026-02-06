@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Color Matcher - iPad</title>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
@@ -18,8 +18,10 @@
             color: #fff;
             overflow: hidden;
             height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
             display: flex;
             flex-direction: column;
+            padding-bottom: env(safe-area-inset-bottom);
         }
 
         #colorDisplay {
@@ -58,9 +60,11 @@
             right: 0;
             background: rgba(0, 0, 0, 0.9);
             padding: 20px;
+            padding-bottom: calc(20px + env(safe-area-inset-bottom));
             display: flex;
             flex-direction: column;
             gap: 15px;
+            z-index: 10;
         }
 
         .status {
@@ -286,13 +290,9 @@
 
                 const offer = await connection.initAsOfferer();
                 
-                // Generate short session ID and store SDP
-                const sessionId = generateSessionId();
-                storeSdp(sessionId, offer, 'offer');
-                
-                // Generate short URL with session ID
-                const shareableUrl = generateShareableUrl(sessionId);
-                // Show QR code (reuse displayAnswerUrl function)
+                // Generate URL with encoded offer
+                const shareableUrl = generateShareableUrl(offer);
+                // Show QR code
                 if (window.QRCode) {
                     const qrContainer = document.getElementById('answerQrCode');
                     if (qrContainer) {
@@ -306,12 +306,16 @@
                 }
                 answerSection.classList.add('active');
                 
-                // Wait for answerer to connect and store answer
+                // Wait for answer - check URL params periodically
                 const checkInterval = setInterval(() => {
-                    const answer = retrieveSdp(sessionId, 'answer');
-                    if (answer && connection) {
+                    if (!connection) {
                         clearInterval(checkInterval);
-                        connection.setRemoteDescription(answer).then(() => {
+                        return;
+                    }
+                    const sdpData = extractSdpFromUrl();
+                    if (sdpData && sdpData.type === 'answer') {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(sdpData.sdp).then(() => {
                             status.textContent = 'Connection established';
                             status.className = 'status connected';
                             answerSection.classList.remove('active');
@@ -320,11 +324,9 @@
                             console.error('Error setting remote description:', err);
                         });
                     }
-                }, 500);
+                }, 1000);
                 
-                setTimeout(() => {
-                    clearInterval(checkInterval);
-                }, 300000);
+                setTimeout(() => clearInterval(checkInterval), 300000);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);
@@ -468,19 +470,11 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Store answer with same session ID so offerer can find it
-                if (sessionInfo && sessionInfo.sessionId) {
-                    storeSdp(sessionInfo.sessionId, answer, 'answer');
-                    
-                    // Also try to send answer via data channel if possible (though connection may not be ready yet)
-                    // The offerer will poll sessionStorage to find it
-                }
+                // Generate answer URL with encoded answer
+                const answerUrl = generateAnswerUrl(answer);
+                displayAnswerUrl(answerUrl, null, answer);
                 
-                // Connection should complete automatically via ICE
-                status.textContent = 'Connected!';
-                status.className = 'status connected';
-                connectionSection.style.display = 'none';
-                connectedSection.classList.add('active');
+                // Connection completes when other device loads the answer URL
 
             } catch (err) {
                 console.error('Error connecting:', err);
@@ -558,41 +552,28 @@
             sendFeedback(false);
         });
 
-        // Display answer URL (or offer URL when starting session)
+        // Display answer URL
         function displayAnswerUrl(url, sessionId, sdp) {
             answerSection.classList.add('active');
             
-            // Generate QR code (now with short URL!)
+            // Generate QR code
             if (window.QRCode) {
                 const qrContainer = document.getElementById('answerQrCode');
-                qrContainer.innerHTML = '';
-                new QRCode(qrContainer, {
-                    text: url,
-                    width: 200,
-                    height: 200
-                });
+                if (qrContainer) {
+                    qrContainer.innerHTML = '';
+                    new QRCode(qrContainer, {
+                        text: url,
+                        width: 200,
+                        height: 200,
+                        errorCorrectionLevel: 'M'
+                    });
+                }
             }
 
-            // Show session ID
-            if (answerSessionIdDisplay && sessionId) {
-                answerSessionIdDisplay.value = sessionId;
-            }
-            
-            // Show SDP for manual copy
-            if (answerSdpDisplay && sdp) {
-                answerSdpDisplay.value = encodeSdp(sdp);
-            }
-
-            copyAnswerBtn.onclick = () => {
-                navigator.clipboard.writeText(url).then(() => {
-                    alert('URL copied to clipboard!');
-                });
-            };
-            
-            if (copyAnswerSdpBtn && sdp) {
-                copyAnswerSdpBtn.onclick = () => {
-                    navigator.clipboard.writeText(encodeSdp(sdp)).then(() => {
-                        alert('SDP copied to clipboard!');
+            if (copyAnswerBtn) {
+                copyAnswerBtn.onclick = () => {
+                    navigator.clipboard.writeText(url).then(() => {
+                        alert('Answer URL copied! Share this with the other device.');
                     });
                 };
             }
