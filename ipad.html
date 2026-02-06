@@ -366,14 +366,6 @@
         // Connect to other device (join session)
         connectBtn.addEventListener('click', async () => {
             try {
-                // Verify functions are available
-                if (typeof extractSessionFromUrl !== 'function') {
-                    throw new Error('extractSessionFromUrl function not loaded. Please refresh the page.');
-                }
-                if (typeof retrieveSdp !== 'function') {
-                    throw new Error('retrieveSdp function not loaded. Please refresh the page.');
-                }
-                
                 const url = offerInput.value.trim();
                 if (!url) {
                     alert('Please enter a connection URL');
@@ -384,43 +376,27 @@
                 status.textContent = 'Connecting...';
                 status.className = 'status';
 
-                // Extract offer from URL (new session-based or legacy)
+                // Extract offer from URL (direct encoding approach)
                 let offer = null;
-                const sessionInfo = extractSessionFromUrl();
+                const sdpData = extractSdpFromUrl();
                 
-                if (sessionInfo && sessionInfo.type === 'offer') {
-                    // New session-based approach
-                    offer = retrieveSdp(sessionInfo.sessionId, 'offer');
-                    if (!offer) {
-                        alert('Session not found. Please check the URL or enter SDP manually.');
+                if (sdpData && sdpData.type === 'offer') {
+                    offer = sdpData.sdp;
+                } else {
+                    // Try parsing URL directly
+                    try {
+                        const urlObj = new URL(url);
+                        const offerParam = urlObj.searchParams.get('offer');
+                        if (offerParam) {
+                            offer = decodeSdp(offerParam);
+                        } else {
+                            // Maybe it's a direct SDP string
+                            offer = decodeSdp(url);
+                        }
+                    } catch (e) {
+                        alert('Invalid connection URL. Please check and try again.');
                         connectBtn.disabled = false;
                         return;
-                    }
-                } else {
-                    // Legacy URL-based approach
-                    const sdpData = extractSdpFromUrl();
-                    if (sdpData && sdpData.type === 'offer') {
-                        offer = sdpData.sdp;
-                    } else {
-                        // Try parsing as direct SDP or session ID
-                        try {
-                            const urlObj = new URL(url);
-                            const offerParam = urlObj.searchParams.get('offer');
-                            if (offerParam) {
-                                offer = decodeSdp(offerParam);
-                            } else {
-                                // Maybe it's a session ID (6 chars) or direct SDP
-                                if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
-                                    offer = retrieveSdp(url, 'offer');
-                                } else {
-                                    offer = decodeSdp(url);
-                                }
-                            }
-                        } catch (e) {
-                            alert('Invalid connection URL. Please check and try again.');
-                            connectBtn.disabled = false;
-                            return;
-                        }
                     }
                 }
 
