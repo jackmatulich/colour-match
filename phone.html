@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Color Matcher - Phone</title>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #videoContainer {
+            position: relative;
+            flex: 1;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: crosshair;
+        }
+
+        #controls {
+            background: rgba(0, 0, 0, 0.8);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 40vh;
+            overflow-y: auto;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #007AFF;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            flex: 1;
+        }
+
+        button:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #5856D6;
+        }
+
+        button.danger {
+            background: #FF3B30;
+        }
+
+        .color-display {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+        }
+
+        .color-swatch {
+            width: 50px;
+            height: 50px;
+            border-radius: 8px;
+            border: 2px solid #fff;
+        }
+
+        .color-info {
+            flex: 1;
+            font-size: 14px;
+        }
+
+        .color-info strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+
+        #qrContainer {
+            display: none;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        #qrcode {
+            margin: 10px auto;
+        }
+
+        .status {
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .status.connected {
+            background: rgba(0, 255, 0, 0.2);
+        }
+
+        .status.disconnected {
+            background: rgba(255, 0, 0, 0.2);
+        }
+
+        input[type="range"] {
+            width: 100%;
+        }
+
+        label {
+            font-size: 14px;
+            color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="videoContainer">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+    </div>
+
+    <div id="controls">
+        <div class="status" id="status">Not connected</div>
+        
+        <div class="control-group">
+            <button id="connectBtn">Start Connection</button>
+        </div>
+
+        <div id="qrContainer">
+            <div>Scan this QR code with iPad:</div>
+            <div id="qrcode"></div>
+            <button id="copyUrlBtn" class="secondary">Copy URL</button>
+            <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #555;">
+                <label style="display: block; margin-bottom: 5px;">Or enter answer URL from iPad:</label>
+                <input type="text" id="answerInput" placeholder="Paste answer URL here" style="width: 100%; padding: 8px; margin-bottom: 10px; background: #222; color: #fff; border: 1px solid #555; border-radius: 4px;">
+                <button id="submitAnswerBtn" class="secondary">Submit Answer</button>
+            </div>
+        </div>
+
+        <div class="control-group" id="colorControls" style="display: none;">
+            <div class="color-display">
+                <div class="color-swatch" id="selectedColorSwatch"></div>
+                <div class="color-info">
+                    <strong>Selected Color</strong>
+                    <div id="selectedColorInfo">Click on camera view to select a color</div>
+                </div>
+            </div>
+
+            <div class="control-row">
+                <button id="startMatchingBtn">Start Matching</button>
+                <button id="stopMatchingBtn" class="danger" disabled>Stop</button>
+            </div>
+
+            <div class="color-display" id="currentTestColor" style="display: none;">
+                <div class="color-swatch" id="testColorSwatch"></div>
+                <div class="color-info">
+                    <strong>Testing Color</strong>
+                    <div id="testColorInfo"></div>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <input type="radio" name="outputMode" value="rgb" checked> RGB
+                </label>
+                <label>
+                    <input type="radio" name="outputMode" value="cmyk"> CMYK
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script src="color-matcher.js"></script>
+    <script src="webrtc-connection.js"></script>
+    <script>
+        // Global state
+        let video = document.getElementById('video');
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d');
+        let stream = null;
+        let connection = null;
+        let colorMatcher = null;
+        let selectedColor = null;
+        let isMatching = false;
+        let qrCode = null;
+
+        // UI elements
+        const connectBtn = document.getElementById('connectBtn');
+        const qrContainer = document.getElementById('qrContainer');
+        const colorControls = document.getElementById('colorControls');
+        const status = document.getElementById('status');
+        const selectedColorSwatch = document.getElementById('selectedColorSwatch');
+        const selectedColorInfo = document.getElementById('selectedColorInfo');
+        const startMatchingBtn = document.getElementById('startMatchingBtn');
+        const stopMatchingBtn = document.getElementById('stopMatchingBtn');
+        const currentTestColor = document.getElementById('currentTestColor');
+        const testColorSwatch = document.getElementById('testColorSwatch');
+        const testColorInfo = document.getElementById('testColorInfo');
+        const copyUrlBtn = document.getElementById('copyUrlBtn');
+        const answerInput = document.getElementById('answerInput');
+        const submitAnswerBtn = document.getElementById('submitAnswerBtn');
+
+        // Initialize camera
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+                video.srcObject = stream;
+
+                video.addEventListener('loadedmetadata', () => {
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    drawFrame();
+                });
+            } catch (err) {
+                console.error('Error accessing camera:', err);
+                alert('Could not access camera. Please allow camera permissions.');
+            }
+        }
+
+        // Draw video frame to canvas
+        function drawFrame() {
+            if (video.readyState === video.HAVE_ENOUGH_DATA) {
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            }
+            requestAnimationFrame(drawFrame);
+        }
+
+        // Handle canvas click to select color
+        canvas.addEventListener('click', (e) => {
+            if (!connection || !connection.isReady()) {
+                alert('Please connect to iPad first');
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) * (canvas.width / rect.width));
+            const y = Math.floor((e.clientY - rect.top) * (canvas.height / rect.height));
+
+            const imageData = ctx.getImageData(x, y, 1, 1);
+            const [r, g, b] = imageData.data;
+
+            selectedColor = { r, g, b };
+            updateSelectedColorDisplay();
+
+            // Initialize color matcher
+            colorMatcher = new ColorMatcher(selectedColor);
+            colorMatcher.generateInitialCandidates(50);
+        });
+
+        // Update selected color display
+        function updateSelectedColorDisplay() {
+            if (!selectedColor) return;
+
+            const hex = rgbToHex(selectedColor.r, selectedColor.g, selectedColor.b);
+            const cmyk = rgbToCmyk(selectedColor.r, selectedColor.g, selectedColor.b);
+
+            selectedColorSwatch.style.backgroundColor = hex;
+            selectedColorInfo.textContent = 
+                `RGB: ${selectedColor.r}, ${selectedColor.g}, ${selectedColor.b} | ` +
+                `CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}% | ` +
+                `Hex: ${hex}`;
+        }
+
+        // Start connection
+        connectBtn.addEventListener('click', async () => {
+            try {
+                connectBtn.disabled = true;
+                status.textContent = 'Creating connection...';
+                status.className = 'status';
+
+                connection = new WebRTCConnection();
+
+                connection.onConnectionStateChange((state) => {
+                    console.log('Connection state:', state);
+                    if (state === 'connected') {
+                        status.textContent = 'Connected to iPad';
+                        status.className = 'status connected';
+                        colorControls.style.display = 'block';
+                    } else if (state === 'disconnected' || state === 'failed') {
+                        status.textContent = 'Disconnected';
+                        status.className = 'status disconnected';
+                    }
+                });
+
+                connection.onDataChannelStateChange((isOpen) => {
+                    if (isOpen) {
+                        status.textContent = 'Data channel open';
+                        status.className = 'status connected';
+                    }
+                });
+
+                connection.onMessage((data) => {
+                    handleMessage(data);
+                });
+
+                const offer = await connection.initAsOfferer();
+                
+                // Generate QR code with offer
+                const shareableUrl = generateShareableUrl(offer);
+                displayQRCode(shareableUrl);
+
+                // Check if answer is in URL (iPad might have sent it back)
+                checkForAnswer();
+                
+            } catch (err) {
+                console.error('Error creating connection:', err);
+                alert('Failed to create connection: ' + err.message);
+                connectBtn.disabled = false;
+            }
+        });
+
+        // Display QR code
+        function displayQRCode(url) {
+            qrContainer.style.display = 'block';
+            if (qrCode) {
+                qrCode.clear();
+            }
+            qrCode = new QRCode(document.getElementById('qrcode'), {
+                text: url,
+                width: 200,
+                height: 200
+            });
+
+            copyUrlBtn.onclick = () => {
+                navigator.clipboard.writeText(url).then(() => {
+                    alert('URL copied to clipboard!');
+                });
+            };
+
+            // Handle answer submission
+            submitAnswerBtn.onclick = () => {
+                const answerUrl = answerInput.value.trim();
+                if (!answerUrl) {
+                    alert('Please enter an answer URL');
+                    return;
+                }
+
+                try {
+                    const urlObj = new URL(answerUrl);
+                    const answerParam = urlObj.searchParams.get('answer');
+                    if (answerParam) {
+                        const answer = decodeSdp(answerParam);
+                        if (answer && connection) {
+                            connection.setRemoteDescription(answer).then(() => {
+                                status.textContent = 'Connection established';
+                                status.className = 'status connected';
+                                colorControls.style.display = 'block';
+                            }).catch(err => {
+                                console.error('Error setting remote description:', err);
+                                alert('Failed to establish connection: ' + err.message);
+                            });
+                        } else {
+                            alert('Invalid answer format');
+                        }
+                    } else {
+                        alert('No answer parameter found in URL');
+                    }
+                } catch (e) {
+                    alert('Invalid URL: ' + e.message);
+                }
+            };
+
+            // Allow Enter key to submit
+            answerInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    submitAnswerBtn.click();
+                }
+            });
+        }
+
+        // Check for answer in URL parameters
+        function checkForAnswer() {
+            const sdpData = extractSdpFromUrl();
+            if (sdpData && sdpData.type === 'answer' && connection) {
+                connection.setRemoteDescription(sdpData.sdp).then(() => {
+                    status.textContent = 'Connection established';
+                    status.className = 'status connected';
+                }).catch(err => {
+                    console.error('Error setting remote description:', err);
+                });
+            }
+        }
+
+        // Handle incoming messages
+        function handleMessage(data) {
+            if (data.type === 'answer') {
+                // iPad sent answer via data channel (though this won't work until connected)
+                // This is a fallback
+                if (connection) {
+                    connection.setRemoteDescription(data.answer).then(() => {
+                        status.textContent = 'Connection established';
+                        status.className = 'status connected';
+                    });
+                }
+            } else if (data.type === 'feedback') {
+                // User feedback on iPad
+                if (isMatching && colorMatcher) {
+                    const currentCandidate = colorMatcher.candidates[colorMatcher.currentIndex - 1];
+                    colorMatcher.recordFeedback(data.isMatch, currentCandidate);
+                    
+                    if (data.isMatch) {
+                        // Found a match, can refine or stop
+                        alert('Match found! Best color: RGB(' + 
+                            currentCandidate.rgb.r + ', ' + 
+                            currentCandidate.rgb.g + ', ' + 
+                            currentCandidate.rgb.b + ')');
+                    }
+                }
+            }
+        }
+
+        // Start matching process
+        startMatchingBtn.addEventListener('click', () => {
+            if (!selectedColor) {
+                alert('Please select a color first by clicking on the camera view');
+                return;
+            }
+
+            if (!connection || !connection.isReady()) {
+                alert('Please connect to iPad first');
+                return;
+            }
+
+            isMatching = true;
+            startMatchingBtn.disabled = true;
+            stopMatchingBtn.disabled = false;
+            currentTestColor.style.display = 'flex';
+
+            // Reset matcher
+            colorMatcher.reset();
+            sendNextColor();
+        });
+
+        // Stop matching
+        stopMatchingBtn.addEventListener('click', () => {
+            isMatching = false;
+            startMatchingBtn.disabled = false;
+            stopMatchingBtn.disabled = true;
+            currentTestColor.style.display = 'none';
+        });
+
+        // Send next color to test
+        function sendNextColor() {
+            if (!isMatching || !colorMatcher) return;
+
+            const candidate = colorMatcher.getNextCandidate();
+            if (!candidate) {
+                // No more candidates, refine search
+                colorMatcher.refineSearch(20);
+                colorMatcher.reset();
+                const nextCandidate = colorMatcher.getNextCandidate();
+                if (!nextCandidate) {
+                    alert('No more colors to test');
+                    stopMatchingBtn.click();
+                    return;
+                }
+                sendColorToIpad(nextCandidate);
+                return;
+            }
+
+            sendColorToIpad(candidate);
+        }
+
+        // Send color to iPad
+        function sendColorToIpad(candidate) {
+            const outputMode = document.querySelector('input[name="outputMode"]:checked').value;
+            const rgb = candidate.rgb;
+
+            // Update test color display
+            const hex = rgbToHex(rgb.r, rgb.g, rgb.b);
+            const cmyk = rgbToCmyk(rgb.r, rgb.g, rgb.b);
+            
+            testColorSwatch.style.backgroundColor = hex;
+            if (outputMode === 'rgb') {
+                testColorInfo.textContent = `RGB: ${rgb.r}, ${rgb.g}, ${rgb.b} | Hex: ${hex}`;
+            } else {
+                testColorInfo.textContent = `CMYK: ${cmyk.c}%, ${cmyk.m}%, ${cmyk.y}%, ${cmyk.k}%`;
+            }
+
+            // Send to iPad
+            connection.sendMessage({
+                type: 'color',
+                rgb: rgb,
+                cmyk: cmyk,
+                mode: outputMode
+            });
+
+            // Auto-advance after 2 seconds (or wait for user feedback)
+            setTimeout(() => {
+                if (isMatching) {
+                    sendNextColor();
+                }
+            }, 2000);
+        }
+
+        // Initialize
+        initCamera();
+        
+        // Check for answer on page load
+        window.addEventListener('load', () => {
+            setTimeout(checkForAnswer, 1000);
+        });
+    </script>
+</body>
+</html>
