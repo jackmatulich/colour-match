@@ -407,8 +407,26 @@
                 const shareableUrl = generateShareableUrl(sessionId);
                 displayQRCode(shareableUrl, sessionId, offer);
 
-                // Listen for answer via data channel or polling
-                startWaitingForAnswer(sessionId);
+                // Wait for answerer to connect and store answer
+                // Poll sessionStorage for answer
+                const checkInterval = setInterval(() => {
+                    const answer = retrieveSdp(sessionId, 'answer');
+                    if (answer && connection) {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(answer).then(() => {
+                            status.textContent = 'Connection established';
+                            status.className = 'status connected';
+                            colorControls.style.display = 'block';
+                        }).catch(err => {
+                            console.error('Error setting remote description:', err);
+                        });
+                    }
+                }, 500); // Check every 500ms
+                
+                // Stop polling after 5 minutes
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                }, 300000);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);

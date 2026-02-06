@@ -292,10 +292,39 @@
                 
                 // Generate short URL with session ID
                 const shareableUrl = generateShareableUrl(sessionId);
-                displayQRCode(shareableUrl, sessionId, offer);
+                // Show QR code (reuse displayAnswerUrl function)
+                if (window.QRCode) {
+                    const qrContainer = document.getElementById('answerQrCode');
+                    if (qrContainer) {
+                        qrContainer.innerHTML = '';
+                        new QRCode(qrContainer, {
+                            text: shareableUrl,
+                            width: 200,
+                            height: 200
+                        });
+                    }
+                }
+                answerSection.classList.add('active');
                 
-                // Wait for answerer to connect
-                startWaitingForAnswer(sessionId);
+                // Wait for answerer to connect and store answer
+                const checkInterval = setInterval(() => {
+                    const answer = retrieveSdp(sessionId, 'answer');
+                    if (answer && connection) {
+                        clearInterval(checkInterval);
+                        connection.setRemoteDescription(answer).then(() => {
+                            status.textContent = 'Connection established';
+                            status.className = 'status connected';
+                            answerSection.classList.remove('active');
+                            connectedSection.classList.add('active');
+                        }).catch(err => {
+                            console.error('Error setting remote description:', err);
+                        });
+                    }
+                }, 500);
+                
+                setTimeout(() => {
+                    clearInterval(checkInterval);
+                }, 300000);
                 
             } catch (err) {
                 console.error('Error creating connection:', err);
