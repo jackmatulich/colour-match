@@ -802,6 +802,16 @@
             }, 2000);
         }
 
+        // Wait for scripts to load before initializing
+        window.addEventListener('DOMContentLoaded', () => {
+            // Verify critical functions are loaded
+            if (typeof generateSessionId === 'undefined') {
+                console.error('webrtc-connection.js not loaded properly');
+                status.textContent = 'Error: Scripts not loaded. Please refresh.';
+                status.className = 'status disconnected';
+            }
+        });
+
         // Initialize
         initCamera();
         

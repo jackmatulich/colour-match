@@ -246,6 +246,11 @@ function generateSessionId() {
     return Math.random().toString(36).substring(2, 8).toUpperCase();
 }
 
+// Ensure function is available globally
+if (typeof window !== 'undefined') {
+    window.generateSessionId = generateSessionId;
+}
+
 /**
  * Encode SDP to base64 for storage/sharing
  */
@@ -273,6 +278,17 @@ function storeSdp(sessionId, sdp, type) {
     sessionStorage.setItem(key, encodeSdp(sdp));
     // Also store timestamp to clean up old entries
     sessionStorage.setItem(`${key}_time`, Date.now().toString());
+}
+
+// Ensure function is available globally
+if (typeof window !== 'undefined') {
+    window.storeSdp = storeSdp;
+    window.retrieveSdp = retrieveSdp;
+    window.generateShareableUrl = generateShareableUrl;
+    window.generateAnswerUrl = generateAnswerUrl;
+    window.extractSessionFromUrl = extractSessionFromUrl;
+    window.encodeSdp = encodeSdp;
+    window.decodeSdp = decodeSdp;
 }
 
 /**
@@ -316,6 +332,18 @@ function extractSessionFromUrl() {
         return { sessionId, type };
     }
     return null;
+}
+
+// Ensure all functions are available globally
+if (typeof window !== 'undefined') {
+    window.generateSessionId = generateSessionId;
+    window.storeSdp = storeSdp;
+    window.retrieveSdp = retrieveSdp;
+    window.generateShareableUrl = generateShareableUrl;
+    window.generateAnswerUrl = generateAnswerUrl;
+    window.extractSessionFromUrl = extractSessionFromUrl;
+    window.encodeSdp = encodeSdp;
+    window.decodeSdp = decodeSdp;
 }
 
 /**
