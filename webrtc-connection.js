@@ -290,18 +290,33 @@ function retrieveSdp(sessionId, type) {
 /**
  * Generate shareable URL with short session ID
  */
-function generateShareableUrl(sessionId, baseUrl = window.location.origin) {
+function generateShareableUrl(sessionId, baseUrl = null) {
+    // Get the full base URL including path
+    if (!baseUrl) {
+        baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+    }
+    
     // Use the phone page for offer, iPad page for answer
     const isPhone = window.location.pathname.includes('phone');
     const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-    return `${baseUrl}/${targetPage}?session=${sessionId}`;
+    
+    // Ensure baseUrl ends with / and targetPage doesn't start with /
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    return `${cleanBase}/${targetPage}?session=${sessionId}`;
 }
 
 /**
  * Generate shareable URL for answer
  */
-function generateAnswerUrl(sessionId, baseUrl = window.location.origin) {
-    return `${baseUrl}/phone.html?session=${sessionId}&type=answer`;
+function generateAnswerUrl(sessionId, baseUrl = null) {
+    // Get the full base URL including path
+    if (!baseUrl) {
+        baseUrl = window.location.origin + window.location.pathname.replace(/\/[^/]*$/, '');
+    }
+    
+    // Ensure baseUrl ends with /
+    const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+    return `${cleanBase}/phone.html?session=${sessionId}&type=answer`;
 }
 
 /**
