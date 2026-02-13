@@ -373,76 +373,55 @@ async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
 }
 
 /**
- * Generate shareable URL with short session ID
+ * Generate shareable URL with short session ID (single-page app: same page with ?s= code)
  */
 function generateShareableUrl(sdp, baseUrl = null) {
-    // Generate short session ID (6 chars)
     const sessionId = generateSessionId();
-    
-    // Get the full base URL including path
     if (!baseUrl) {
         const pathname = window.location.pathname;
-        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        const directory = pathname.endsWith('/') ? pathname : pathname.substring(0, pathname.lastIndexOf('/') + 1);
         baseUrl = window.location.origin + directory;
     }
-    
-    // Use the phone page for offer, iPad page for answer
-    const isPhone = window.location.pathname.includes('phone');
-    const targetPage = isPhone ? 'ipad.html' : 'phone.html';
-    
-    // URL with just the short session ID
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    const url = `${cleanBase}${targetPage}?session=${sessionId}`;
-    
+    const url = `${cleanBase}index.html?s=${sessionId}`;
     return { url: url, sessionId: sessionId };
 }
 
 /**
- * Generate shareable URL with short session ID (legacy, for sessionStorage approach)
+ * Generate shareable URL with session ID (single-page app)
  */
 function generateShareableUrlWithSession(sessionId, baseUrl = null) {
     if (!baseUrl) {
         const pathname = window.location.pathname;
-        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        const directory = pathname.endsWith('/') ? pathname : pathname.substring(0, pathname.lastIndexOf('/') + 1);
         baseUrl = window.location.origin + directory;
     }
-    const isPhone = window.location.pathname.includes('phone');
-    const targetPage = isPhone ? 'ipad.html' : 'phone.html';
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    return `${cleanBase}${targetPage}?session=${sessionId}`;
+    return `${cleanBase}index.html?s=${sessionId}`;
 }
 
 /**
- * Generate answer URL (answer is stored on dweet.cc, not in URL)
+ * Generate answer URL (answer is stored on dweet.cc; URL for display only)
  */
 function generateAnswerUrl(answer, sessionId, baseUrl = null) {
-    if (!sessionId) {
-        sessionId = generateSessionId();
-    }
-    
+    if (!sessionId) sessionId = generateSessionId();
     if (!baseUrl) {
         const pathname = window.location.pathname;
-        const directory = pathname.substring(0, pathname.lastIndexOf('/') + 1);
+        const directory = pathname.endsWith('/') ? pathname : pathname.substring(0, pathname.lastIndexOf('/') + 1);
         baseUrl = window.location.origin + directory;
     }
-    
     const cleanBase = baseUrl.endsWith('/') ? baseUrl : baseUrl + '/';
-    const url = `${cleanBase}phone.html?session=${sessionId}&type=answer`;
-    
-    return { url: url, sessionId: sessionId };
+    return { url: `${cleanBase}index.html?s=${sessionId}`, sessionId: sessionId };
 }
 
 /**
- * Extract session info from URL parameters
+ * Extract session info from URL. Single-page app: ?s=CODE or ?session=CODE means display role.
  */
 function extractSessionFromUrl() {
     const params = new URLSearchParams(window.location.search);
-    const sessionId = params.get('session');
-    const type = params.get('type') || 'offer'; // default to offer if not specified
-    
-    if (sessionId) {
-        return { sessionId, type };
-    }
+    const sessionId = params.get('s') || params.get('session');
+    const type = params.get('type') || 'offer';
+    if (sessionId) return { sessionId, type };
     return null;
 }
 
