@@ -309,11 +309,11 @@ function retrieveSdp(sessionId, type) {
 }
 
 /**
- * Store SDP on dweet.io for signaling
+ * Store SDP on dweet.cc for signaling
  */
 async function storeSdpOnDweet(sessionId, sdp, type) {
     const thingName = `colormatch-${sessionId}-${type}`;
-    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
+    const dweetUrl = `https://dweet.cc/dweet/for/${thingName}`;
     
     try {
         const response = await fetch(dweetUrl, {
@@ -329,22 +329,22 @@ async function storeSdpOnDweet(sessionId, sdp, type) {
         });
         
         if (!response.ok) {
-            throw new Error('Failed to store on dweet.io');
+            throw new Error('Failed to store on dweet.cc');
         }
         
         return true;
     } catch (err) {
-        console.error('Error storing on dweet.io:', err);
+        console.error('Error storing on dweet.cc:', err);
         return false;
     }
 }
 
 /**
- * Store ICE candidate on dweet.io
+ * Store ICE candidate on dweet.cc
  */
 async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
     const thingName = `colormatch-${sessionId}-ice-${isOfferer ? 'offerer' : 'answerer'}`;
-    const dweetUrl = `https://dweet.io/dweet/for/${thingName}`;
+    const dweetUrl = `https://dweet.cc/dweet/for/${thingName}`;
     
     try {
         // Convert RTCIceCandidate to plain object for storage
@@ -413,7 +413,7 @@ function generateShareableUrlWithSession(sessionId, baseUrl = null) {
 }
 
 /**
- * Generate answer URL (answer is stored on dweet.io, not in URL)
+ * Generate answer URL (answer is stored on dweet.cc, not in URL)
  */
 function generateAnswerUrl(answer, sessionId, baseUrl = null) {
     if (!sessionId) {
@@ -459,13 +459,13 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Retrieve SDP from dweet.io using session ID
+ * Retrieve SDP from dweet.cc using session ID
  */
 async function retrieveSdpFromDweet(sessionId, type) {
     const thingName = `colormatch-${sessionId}-${type}`;
     
     try {
-        const response = await fetch(`https://dweet.io/get/latest/dweet/for/${thingName}`);
+        const response = await fetch(`https://dweet.cc/get/latest/dweet/for/${thingName}`);
         if (!response.ok) {
             return null;
         }
@@ -479,19 +479,19 @@ async function retrieveSdpFromDweet(sessionId, type) {
         }
         return null;
     } catch (err) {
-        console.error('Error retrieving from dweet.io:', err);
+        console.error('Error retrieving from dweet.cc:', err);
         return null;
     }
 }
 
 /**
- * Retrieve ICE candidates from dweet.io
+ * Retrieve ICE candidates from dweet.cc
  */
 async function retrieveIceCandidatesFromDweet(sessionId, isOfferer) {
     const thingName = `colormatch-${sessionId}-ice-${isOfferer ? 'answerer' : 'offerer'}`;
     
     try {
-        const response = await fetch(`https://dweet.io/get/latest/dweet/for/${thingName}`);
+        const response = await fetch(`https://dweet.cc/get/latest/dweet/for/${thingName}`);
         if (!response.ok) {
             return null;
         }
