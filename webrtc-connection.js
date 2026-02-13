@@ -308,30 +308,32 @@ function retrieveSdp(sessionId, type) {
     return null;
 }
 
+/** CORS proxy when dweet.cc is blocked from browser (e.g. GitHub Pages). */
+function dweetProxyUrl(url) {
+    return 'https://corsproxy.org/?' + encodeURIComponent(url);
+}
+
 /**
- * Store SDP on dweet.cc for signaling
+ * Store SDP on dweet.cc for signaling (tries direct, then CORS proxy if blocked).
  */
 async function storeSdpOnDweet(sessionId, sdp, type) {
     const thingName = `colormatch-${sessionId}-${type}`;
     const dweetUrl = `https://dweet.cc/dweet/for/${thingName}`;
-    
+    const body = JSON.stringify({
+        type: type,
+        sdp: encodeSdp(sdp),
+        timestamp: Date.now()
+    });
+    const opts = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body };
+
     try {
-        const response = await fetch(dweetUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                type: type,
-                sdp: encodeSdp(sdp),
-                timestamp: Date.now()
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to store on dweet.cc');
+        let response;
+        try {
+            response = await fetch(dweetUrl, opts);
+        } catch (err) {
+            response = await fetch(dweetProxyUrl(dweetUrl), opts);
         }
-        
+        if (!response.ok) throw new Error('Failed to store on dweet.cc');
         return true;
     } catch (err) {
         console.error('Error storing on dweet.cc:', err);
@@ -354,17 +356,17 @@ async function storeIceCandidateOnDweet(sessionId, candidate, isOfferer) {
             sdpMid: candidate.sdpMid || null
         };
         
-        const response = await fetch(dweetUrl, {
+        const opts = {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                candidate: candidateObj,
-                timestamp: Date.now()
-            })
-        });
-        
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidate: candidateObj, timestamp: Date.now() })
+        };
+        let response;
+        try {
+            response = await fetch(dweetUrl, opts);
+        } catch (err) {
+            response = await fetch(dweetProxyUrl(dweetUrl), opts);
+        }
         return response.ok;
     } catch (err) {
         console.error('Error storing ICE candidate:', err);
@@ -447,7 +449,12 @@ async function retrieveSdpFromDweet(sessionId, type, maxRetries = 5) {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(url);
+            let response;
+            try {
+                response = await fetch(url);
+            } catch (err) {
+                response = await fetch(dweetProxyUrl(url));
+            }
             if (!response.ok) {
                 if (attempt < maxRetries) {
                     await new Promise(r => setTimeout(r, 1500));
@@ -481,13 +488,16 @@ async function retrieveSdpFromDweet(sessionId, type, maxRetries = 5) {
  */
 async function retrieveIceCandidatesFromDweet(sessionId, isOfferer) {
     const thingName = `colormatch-${sessionId}-ice-${isOfferer ? 'answerer' : 'offerer'}`;
-    
+    const url = `https://dweet.cc/get/latest/dweet/for/${thingName}`;
     try {
-        const response = await fetch(`https://dweet.cc/get/latest/dweet/for/${thingName}`);
-        if (!response.ok) {
-            return null;
+        let response;
+        try {
+            response = await fetch(url);
+        } catch (err) {
+            response = await fetch(dweetProxyUrl(url));
         }
-        
+        if (!response.ok) return null;
+
         const data = await response.json();
         if (data.with && data.with.length > 0) {
             const dweet = data.with[0];
