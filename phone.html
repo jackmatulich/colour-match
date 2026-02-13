@@ -467,20 +467,33 @@
             }
         });
 
+        // Get session from a URL string (same-origin or full URL)
+        function getSessionFromUrl(urlString) {
+            try {
+                const urlObj = new URL(urlString, window.location.origin);
+                const sessionId = urlObj.searchParams.get('session');
+                const type = urlObj.searchParams.get('type') || 'offer';
+                if (sessionId) return { sessionId, type };
+            } catch (e) { /* not a URL */ }
+            return null;
+        }
+
         // Join session (accept offer)
         joinOfferBtn.addEventListener('click', async () => {
             try {
-                // Verify functions are available
                 if (typeof extractSessionFromUrl !== 'function') {
                     throw new Error('extractSessionFromUrl function not loaded. Please refresh the page.');
                 }
-                if (typeof retrieveSdp !== 'function') {
-                    throw new Error('retrieveSdp function not loaded. Please refresh the page.');
+                if (typeof retrieveSdpFromDweet !== 'function') {
+                    throw new Error('retrieveSdpFromDweet function not loaded. Please refresh the page.');
                 }
-                
-                const url = joinOfferInput.value.trim();
+
+                // Use input URL or current page when it has session (e.g. after scanning QR)
+                const inputUrl = joinOfferInput.value.trim();
+                const hasSessionInPage = extractSessionFromUrl();
+                const url = inputUrl || (hasSessionInPage ? window.location.href : '');
                 if (!url) {
-                    alert('Please enter a connection URL');
+                    alert('Please enter a connection URL or scan the QR code.');
                     return;
                 }
 
@@ -488,43 +501,44 @@
                 status.textContent = 'Connecting...';
                 status.className = 'status';
 
-                // Extract offer from URL (new session-based or legacy)
                 let offer = null;
-                const sessionInfo = extractSessionFromUrl();
-                
-                if (sessionInfo && sessionInfo.type === 'offer') {
-                    // New session-based approach
-                    offer = retrieveSdp(sessionInfo.sessionId, 'offer');
-                    if (!offer) {
-                        alert('Session not found. Please check the URL and try again.');
-                        joinOfferBtn.disabled = false;
-                        return;
+                const sessionInfo = getSessionFromUrl(url) || extractSessionFromUrl();
+
+                if (sessionInfo && sessionInfo.sessionId) {
+                    // Session-based: fetch offer from dweet.cc (offerer stored it there)
+                    const type = sessionInfo.type || 'offer';
+                    if (type === 'offer') {
+                        status.textContent = 'Fetching session from server...';
+                        offer = await retrieveSdpFromDweet(sessionInfo.sessionId, 'offer');
+                        if (!offer) {
+                            offer = retrieveSdp(sessionInfo.sessionId, 'offer'); // fallback sessionStorage
+                        }
+                        if (!offer) {
+                            alert('Session not found or expired. Please create a new connection on the iPad.');
+                            joinOfferBtn.disabled = false;
+                            return;
+                        }
                     }
-                } else {
-                    // Legacy URL-based approach
+                }
+
+                if (!offer) {
+                    // Legacy URL-based: SDP in URL params or sessionStorage
                     const sdpData = extractSdpFromUrl();
                     if (sdpData && sdpData.type === 'offer') {
                         offer = sdpData.sdp;
                     } else {
-                        // Try parsing as direct SDP or URL
                         try {
                             const urlObj = new URL(url);
                             const offerParam = urlObj.searchParams.get('offer');
                             if (offerParam) {
                                 offer = decodeSdp(offerParam);
+                            } else if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
+                                offer = await retrieveSdpFromDweet(url, 'offer') || retrieveSdp(url, 'offer');
                             } else {
-                                // Maybe it's a direct SDP string
                                 offer = decodeSdp(url);
                             }
                         } catch (e) {
-                            // Not a URL, maybe it's a session ID or SDP
-                            // Check if it's a 6-char session ID
-                            if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
-                                offer = retrieveSdp(url, 'offer');
-                            } else {
-                                // Try as direct SDP
-                                offer = decodeSdp(url);
-                            }
+                            offer = retrieveSdp(url, 'offer') || decodeSdp(url);
                         }
                     }
                 }
@@ -563,9 +577,8 @@
 
                 const answer = await connection.initAsAnswerer(offer);
                 
-                // Get session ID from URL
-                const sessionInfo = extractSessionFromUrl();
-                const sessionId = sessionInfo ? sessionInfo.sessionId : null;
+                // Use session from the URL we connected with (already in sessionInfo above)
+                const sessionId = sessionInfo && sessionInfo.sessionId ? sessionInfo.sessionId : (extractSessionFromUrl() || {}).sessionId;
                 
                 if (!sessionId) {
                     alert('No session ID found');
@@ -573,11 +586,11 @@
                     return;
                 }
                 
-                // Store answer on dweet.io for signaling
+                // Store answer on dweet.cc for signaling
                 await storeSdpOnDweet(sessionId, answer, 'answer');
-                console.log('Answer stored on dweet.io');
+                console.log('Answer stored on dweet.cc');
                 
-                // Set up ICE candidate handler to store on dweet.io
+                // Set up ICE candidate handler to store on dweet.cc
                 let lastIceTimestamp = 0;
                 connection.onIceCandidate(async (candidate) => {
                     if (candidate) {
@@ -847,11 +860,18 @@
 
         // Wait for scripts to load before initializing
         window.addEventListener('DOMContentLoaded', () => {
-            // Verify critical functions are loaded
             if (typeof generateSessionId === 'undefined') {
                 console.error('webrtc-connection.js not loaded properly');
                 status.textContent = 'Error: Scripts not loaded. Please refresh.';
                 status.className = 'status disconnected';
+                return;
+            }
+            // When opened from QR scan (URL has ?session=), pre-fill join URL so user can tap Connect
+            if (typeof extractSessionFromUrl === 'function') {
+                const sessionInfo = extractSessionFromUrl();
+                if (sessionInfo && sessionInfo.sessionId && !joinOfferInput.value.trim()) {
+                    joinOfferInput.value = window.location.href;
+                }
             }
         });
 
