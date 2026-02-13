@@ -478,78 +478,71 @@
             return null;
         }
 
-        // Join session (accept offer)
-        joinOfferBtn.addEventListener('click', async () => {
-            try {
-                if (typeof extractSessionFromUrl !== 'function') {
-                    throw new Error('extractSessionFromUrl function not loaded. Please refresh the page.');
-                }
-                if (typeof retrieveSdpFromDweet !== 'function') {
-                    throw new Error('retrieveSdpFromDweet function not loaded. Please refresh the page.');
-                }
+        // Do the full join flow. Used by Connect button and by auto-join when URL has ?session=
+        async function doJoinSession(url) {
+            if (typeof extractSessionFromUrl !== 'function' || typeof retrieveSdpFromDweet !== 'function') {
+                throw new Error('Scripts not loaded. Please refresh the page.');
+            }
+            const inputUrl = (url || joinOfferInput.value.trim() || '').trim();
+            const hasSessionInPage = extractSessionFromUrl();
+            const effectiveUrl = inputUrl || (hasSessionInPage ? window.location.href : '');
+            if (!effectiveUrl) {
+                alert('Please enter a connection URL or scan the QR code.');
+                return;
+            }
 
-                // Use input URL or current page when it has session (e.g. after scanning QR)
-                const inputUrl = joinOfferInput.value.trim();
-                const hasSessionInPage = extractSessionFromUrl();
-                const url = inputUrl || (hasSessionInPage ? window.location.href : '');
-                if (!url) {
-                    alert('Please enter a connection URL or scan the QR code.');
-                    return;
-                }
+            joinOfferBtn.disabled = true;
+            status.textContent = 'Connecting...';
+            status.className = 'status';
 
-                joinOfferBtn.disabled = true;
-                status.textContent = 'Connecting...';
-                status.className = 'status';
+            let offer = null;
+            const sessionInfo = getSessionFromUrl(effectiveUrl) || extractSessionFromUrl();
 
-                let offer = null;
-                const sessionInfo = getSessionFromUrl(url) || extractSessionFromUrl();
-
-                if (sessionInfo && sessionInfo.sessionId) {
-                    // Session-based: fetch offer from dweet.cc (offerer stored it there)
-                    const type = sessionInfo.type || 'offer';
-                    if (type === 'offer') {
-                        status.textContent = 'Fetching session from server...';
-                        offer = await retrieveSdpFromDweet(sessionInfo.sessionId, 'offer');
-                        if (!offer) {
-                            offer = retrieveSdp(sessionInfo.sessionId, 'offer'); // fallback sessionStorage
-                        }
-                        if (!offer) {
-                            alert('Session not found or expired. Please create a new connection on the iPad.');
-                            joinOfferBtn.disabled = false;
-                            return;
-                        }
+            if (sessionInfo && sessionInfo.sessionId) {
+                const type = sessionInfo.type || 'offer';
+                if (type === 'offer') {
+                    status.textContent = 'Fetching session...';
+                    offer = await retrieveSdpFromDweet(sessionInfo.sessionId, 'offer');
+                    if (!offer) offer = retrieveSdp(sessionInfo.sessionId, 'offer');
+                    if (!offer) {
+                        status.textContent = 'Session not found or expired';
+                        status.className = 'status disconnected';
+                        joinOfferBtn.disabled = false;
+                        alert('Session not found or expired. Create a new connection on the iPad.');
+                        return;
                     }
                 }
+            }
 
-                if (!offer) {
-                    // Legacy URL-based: SDP in URL params or sessionStorage
-                    const sdpData = extractSdpFromUrl();
-                    if (sdpData && sdpData.type === 'offer') {
-                        offer = sdpData.sdp;
-                    } else {
-                        try {
-                            const urlObj = new URL(url);
-                            const offerParam = urlObj.searchParams.get('offer');
-                            if (offerParam) {
-                                offer = decodeSdp(offerParam);
-                            } else if (url.length === 6 && /^[A-Z0-9]+$/.test(url)) {
-                                offer = await retrieveSdpFromDweet(url, 'offer') || retrieveSdp(url, 'offer');
-                            } else {
-                                offer = decodeSdp(url);
-                            }
-                        } catch (e) {
-                            offer = retrieveSdp(url, 'offer') || decodeSdp(url);
+            if (!offer) {
+                const sdpData = extractSdpFromUrl();
+                if (sdpData && sdpData.type === 'offer') {
+                    offer = sdpData.sdp;
+                } else {
+                    try {
+                        const urlObj = new URL(effectiveUrl);
+                        const offerParam = urlObj.searchParams.get('offer');
+                        if (offerParam) {
+                            offer = decodeSdp(offerParam);
+                        } else if (effectiveUrl.length === 6 && /^[A-Z0-9]+$/.test(effectiveUrl)) {
+                            offer = await retrieveSdpFromDweet(effectiveUrl, 'offer') || retrieveSdp(effectiveUrl, 'offer');
+                        } else {
+                            offer = decodeSdp(effectiveUrl);
                         }
+                    } catch (e) {
+                        offer = retrieveSdp(effectiveUrl, 'offer') || decodeSdp(effectiveUrl);
                     }
                 }
+            }
 
-                if (!offer) {
-                    alert('Could not extract offer. Please check the URL and try again.');
-                    joinOfferBtn.disabled = false;
-                    return;
-                }
+            if (!offer) {
+                status.textContent = 'Could not get offer';
+                joinOfferBtn.disabled = false;
+                alert('Could not extract offer. Check the URL and try again.');
+                return;
+            }
 
-                connection = new WebRTCConnection();
+            connection = new WebRTCConnection();
 
                 connection.onConnectionStateChange((state) => {
                     console.log('Connection state:', state);
@@ -646,13 +639,14 @@
                 status.textContent = 'Answer sent! Waiting for connection...';
                 status.className = 'status';
                 
-            } catch (err) {
-                console.error('Error connecting:', err);
-                alert('Failed to connect: ' + err.message);
-                joinOfferBtn.disabled = false;
-            }
-        });
+        }
 
+        // Connect button: run join flow (uses input or current URL)
+        joinOfferBtn.addEventListener('click', () => doJoinSession().catch(err => {
+            console.error('Error connecting:', err);
+            alert('Failed to connect: ' + err.message);
+            joinOfferBtn.disabled = false;
+        }));
 
         // Display QR code with short URL and manual SDP option
         function displayQRCode(url, sessionId, sdp) {
@@ -858,20 +852,26 @@
             }, 2000);
         }
 
-        // Wait for scripts to load before initializing
-        window.addEventListener('DOMContentLoaded', () => {
-            if (typeof generateSessionId === 'undefined') {
+        // Wait for scripts to load, then auto-join when URL has session (e.g. opened from QR scan)
+        window.addEventListener('load', () => {
+            if (typeof generateSessionId === 'undefined' || typeof extractSessionFromUrl !== 'function') {
                 console.error('webrtc-connection.js not loaded properly');
                 status.textContent = 'Error: Scripts not loaded. Please refresh.';
                 status.className = 'status disconnected';
                 return;
             }
-            // When opened from QR scan (URL has ?session=), pre-fill join URL so user can tap Connect
-            if (typeof extractSessionFromUrl === 'function') {
-                const sessionInfo = extractSessionFromUrl();
-                if (sessionInfo && sessionInfo.sessionId && !joinOfferInput.value.trim()) {
-                    joinOfferInput.value = window.location.href;
-                }
+            const sessionInfo = extractSessionFromUrl();
+            // Auto-join when page was opened with ?session= (and not type=answer)
+            if (sessionInfo && sessionInfo.sessionId && sessionInfo.type !== 'answer') {
+                modeSelection.style.display = 'none';
+                joinSessionSection.style.display = 'block';
+                joinOfferInput.value = window.location.href;
+                doJoinSession(window.location.href).catch(err => {
+                    console.error('Auto-join failed:', err);
+                    status.textContent = 'Connection failed';
+                    status.className = 'status disconnected';
+                    joinOfferBtn.disabled = false;
+                });
             }
         });
 
