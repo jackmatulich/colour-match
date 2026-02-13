@@ -292,8 +292,14 @@
                 // Generate short URL with session ID
                 const urlData = generateShareableUrl(offer);
                 
-                // Store offer on dweet.io for signaling
-                await storeSdpOnDweet(urlData.sessionId, offer, 'offer');
+                // Store offer on dweet.cc for signaling
+                const stored = await storeSdpOnDweet(urlData.sessionId, offer, 'offer');
+                if (!stored) {
+                    createOfferBtn.disabled = false;
+                    status.textContent = 'Not connected';
+                    alert('Could not publish session (check network or try again).');
+                    return;
+                }
                 
                 // Show QR code
                 if (window.QRCode) {

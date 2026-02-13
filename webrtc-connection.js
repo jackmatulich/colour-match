@@ -459,29 +459,42 @@ if (typeof window !== 'undefined') {
 }
 
 /**
- * Retrieve SDP from dweet.cc using session ID
+ * Retrieve SDP from dweet.cc using session ID.
+ * Retries a few times to handle propagation delay or transient failures.
  */
-async function retrieveSdpFromDweet(sessionId, type) {
-    const thingName = `colormatch-${sessionId}-${type}`;
-    
-    try {
-        const response = await fetch(`https://dweet.cc/get/latest/dweet/for/${thingName}`);
-        if (!response.ok) {
-            return null;
-        }
-        
-        const data = await response.json();
-        if (data.with && data.with.length > 0) {
-            const dweet = data.with[0];
-            if (dweet.content && dweet.content.sdp) {
-                return decodeSdp(dweet.content.sdp);
+async function retrieveSdpFromDweet(sessionId, type, maxRetries = 5) {
+    const thingName = `colormatch-${encodeURIComponent(sessionId)}-${type}`;
+    const url = `https://dweet.cc/get/latest/dweet/for/${thingName}`;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) {
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    continue;
+                }
+                return null;
+            }
+
+            const data = await response.json();
+            const dweet = (data.with && data.with[0]) ? data.with[0] : data;
+            const content = (dweet && dweet.content) ? dweet.content : dweet;
+            const sdpEncoded = content && (content.sdp || content.offer);
+            if (sdpEncoded) {
+                return decodeSdp(sdpEncoded);
+            }
+        } catch (err) {
+            console.warn('dweet.cc fetch attempt ' + attempt + ' failed:', err.message);
+            if (attempt < maxRetries) {
+                await new Promise(r => setTimeout(r, 1500));
+            } else {
+                console.error('Error retrieving from dweet.cc:', err);
+                return null;
             }
         }
-        return null;
-    } catch (err) {
-        console.error('Error retrieving from dweet.cc:', err);
-        return null;
     }
+    return null;
 }
 
 /**
